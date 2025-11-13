@@ -33,20 +33,16 @@ class TelegramDownloader:
         Returns:
             Username канала без @
         """
-        # Убираем пробелы
         link = link.strip()
         
-        # Если это ссылка t.me/...
         if 't.me/' in link or 'telegram.me/' in link:
-            # Извлекаем последнюю часть после /
+
             parts = link.rstrip('/').split('/')
             return parts[-1].lstrip('@')
         
-        # Если начинается с @
         if link.startswith('@'):
             return link[1:]
         
-        # Иначе возвращаем как есть
         return link
 
     def __init__(
@@ -73,8 +69,7 @@ class TelegramDownloader:
         self.session_string = session_string
         self.download_path = Path(download_path)
         self.download_path.mkdir(parents=True, exist_ok=True)
-        
-        # Используем StringSession если передана строка, иначе файловую сессию
+
         if session_string:
             session = StringSession(session_string)
         else:
@@ -93,24 +88,19 @@ class TelegramDownloader:
             try:
                 await self.client.connect()
                 if not await self.client.is_user_authorized():
-                    print("❌ Ошибка: Сессия не авторизована")
+                    print("Ошибка: Сессия не авторизована")
                     print("Используйте generate_session.py для создания новой сессии")
                     return False
-                print("✓ Подключено к Telegram")
+                print("Подключено к Telegram")
                 return True
             except Exception as e:
                 if attempt < max_retries - 1:
-                    print(f"⚠️  Попытка {attempt + 1} не удалась: {e}")
+                    print(f"Попытка {attempt + 1} не удалась: {e}")
                     print(f"Повторная попытка через 2 секунды...")
                     await asyncio.sleep(2)
                 else:
-                    print(f"❌ Не удалось подключиться после {max_retries} попыток")
+                    print(f"Не удалось подключиться после {max_retries} попыток")
                     print(f"Ошибка: {e}")
-                    print("\nВозможные причины:")
-                    print("1. Проверьте API credentials (api_id, api_hash)")
-                    print("2. Проверьте строку сессии")
-                    print("3. Проверьте интернет-соединение")
-                    print("4. Попробуйте создать новую сессию: python src/tplexity/generate_session.py")
                     return False
 
     async def disconnect(self):
@@ -118,9 +108,9 @@ class TelegramDownloader:
         try:
             if self.client.is_connected():
                 await self.client.disconnect()
-                print("✓ Отключено от Telegram")
+                print("Отключено от Telegram")
         except Exception as e:
-            print(f"⚠️  Ошибка при отключении: {e}")
+            print(f"Ошибка при отключении: {e}")
 
     async def get_channel_info(self, channel_username: str) -> Dict[str, Any]:
         """
@@ -174,7 +164,6 @@ class TelegramDownloader:
         channel = await self.client.get_entity(channel_username)
         messages_data = []
         
-        # Создаем папку для канала
         channel_folder = self.download_path / self._sanitize_filename(channel_username)
         channel_folder.mkdir(exist_ok=True)
         
@@ -182,7 +171,6 @@ class TelegramDownloader:
             media_folder = channel_folder / "media"
             media_folder.mkdir(exist_ok=True)
         
-        # Получаем сообщения
         count = 0
         async for message in self.client.iter_messages(
             channel,
@@ -203,7 +191,6 @@ class TelegramDownloader:
             
             message_dict = await self._message_to_dict(message, channel_username)
             
-            # Скачивание медиа, если требуется
             if save_media and message.media:
                 try:
                     media_path = await message.download_media(
@@ -216,7 +203,7 @@ class TelegramDownloader:
             
             messages_data.append(message_dict)
         
-        print(f"✓ Скачано {len(messages_data)} сообщений")
+        print(f"Скачано {len(messages_data)} сообщений")
         
         return messages_data
 
@@ -231,10 +218,8 @@ class TelegramDownloader:
         Returns:
             Словарь с данными сообщения
         """
-        # Формируем ссылку на сообщение
         message_link = None
         if channel_username:
-            # Убираем @ если есть
             clean_username = channel_username.lstrip('@')
             message_link = f"https://t.me/{clean_username}/{message.id}"
         
@@ -283,7 +268,6 @@ class TelegramDownloader:
             filename: Имя файла (если None, будет сгенерировано автоматически)
             filter_empty: Удалять ли сообщения с пустым текстом
         """
-        # Фильтруем пустые сообщения если нужно
         if filter_empty:
             data = self.filter_empty_messages(data)
         
@@ -299,7 +283,7 @@ class TelegramDownloader:
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         
-        print(f"✓ Данные сохранены в {filepath}")
+        print(f"Данные сохранены в {filepath}")
         return filepath
     
     def append_to_json(
@@ -314,21 +298,18 @@ class TelegramDownloader:
             new_data: Список новых сообщений
             filepath: Путь к существующему JSON файлу
         """
-        # Читаем существующие данные
         if filepath.exists():
             with open(filepath, "r", encoding="utf-8") as f:
                 existing_data = json.load(f)
         else:
             existing_data = []
         
-        # Добавляем новые данные
         existing_data.extend(new_data)
         
-        # Сохраняем обратно
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(existing_data, f, ensure_ascii=False, indent=2)
         
-        print(f"✓ Добавлено {len(new_data)} новых сообщений в {filepath}")
+        print(f"Добавлено {len(new_data)} новых сообщений в {filepath}")
 
     def save_to_csv(
         self,
@@ -346,7 +327,6 @@ class TelegramDownloader:
             filename: Имя файла (если None, будет сгенерировано автоматически)
             filter_empty: Удалять ли сообщения с пустым текстом
         """
-        # Фильтруем пустые сообщения если нужно
         if filter_empty:
             data = self.filter_empty_messages(data)
         
@@ -362,7 +342,7 @@ class TelegramDownloader:
         df = pd.DataFrame(data)
         df.to_csv(filepath, index=False, encoding="utf-8")
         
-        print(f"✓ Данные сохранены в {filepath}")
+        print(f"Данные сохранены в {filepath}")
 
     def save_to_parquet(
         self,
@@ -380,7 +360,6 @@ class TelegramDownloader:
             filename: Имя файла (если None, будет сгенерировано автоматически)
             filter_empty: Удалять ли сообщения с пустым текстом
         """
-        # Фильтруем пустые сообщения если нужно
         if filter_empty:
             data = self.filter_empty_messages(data)
         
@@ -396,7 +375,7 @@ class TelegramDownloader:
         df = pd.DataFrame(data)
         df.to_parquet(filepath, index=False)
         
-        print(f"✓ Данные сохранены в {filepath}")
+        print(f"Данные сохранены в {filepath}")
 
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
@@ -409,9 +388,7 @@ class TelegramDownloader:
         Returns:
             Очищенное имя файла
         """
-        # Удаляем @ если есть
         filename = filename.lstrip("@")
-        # Заменяем недопустимые символы
         invalid_chars = '<>:"/\\|?*'
         for char in invalid_chars:
             filename = filename.replace(char, "_")
@@ -439,19 +416,16 @@ class TelegramDownloader:
                 print(f"Обработка канала: {channel}")
                 print(f"{'='*60}")
                 
-                # Получаем информацию о канале
                 info = await self.get_channel_info(channel)
                 print(f"Канал: {info.get('title', channel)}")
                 print(f"Подписчиков: {info.get('participants_count', 'N/A')}")
                 
-                # Скачиваем сообщения
                 messages = await self.download_messages(
                     channel,
                     limit=limit,
                     save_media=save_media,
                 )
                 
-                # Сохраняем в нужном формате
                 if save_format == "json":
                     self.save_to_json(messages, channel)
                 elif save_format == "csv":
@@ -462,13 +436,12 @@ class TelegramDownloader:
                     raise ValueError(f"Неподдерживаемый формат: {save_format}")
                 
             except Exception as e:
-                print(f"✗ Ошибка при обработке канала {channel}: {e}")
+                print(f"Ошибка при обработке канала {channel}: {e}")
                 continue
 
 
 async def main():
     """Пример использования."""
-    # Получаем credentials из переменных окружения
     from dotenv import load_dotenv
     load_dotenv()
     
@@ -480,7 +453,6 @@ async def main():
         print("Получить можно здесь: https://my.telegram.org")
         return
     
-    # Создаем downloader
     downloader = TelegramDownloader(
         api_id=api_id,
         api_hash=api_hash,
@@ -489,14 +461,12 @@ async def main():
     )
     
     try:
-        # Подключаемся
         connected = await downloader.connect()
         if not connected:
             return
         
-        # Пример: скачать последние 100 сообщений из одного канала
         messages = await downloader.download_messages(
-            channel_username="durov",  # Замените на нужный канал
+            channel_username="durov",  
             limit=100,
             save_media=False,
         )
