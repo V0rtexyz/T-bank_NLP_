@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 
 class Reranker:
-    """Класс для reranking результатов поиска с использованием jina-reranker-v3.
+    """Класс для reranking результатов поиска с использованием jina-reranker-v3
 
     Модель поддерживает:
     - Listwise reranking до 64 документов одновременно
@@ -16,10 +16,10 @@ class Reranker:
 
     def __init__(self, model_name: str = "jinaai/jina-reranker-v3"):
         """
-        Инициализация reranker.
+        Инициализация reranker
 
         Args:
-            model_name: Имя модели для reranking. По умолчанию используется jinaai/jina-reranker-v3
+            model_name (str): Имя модели для reranking. По умолчанию используется jinaai/jina-reranker-v3
         """
         self.model_name = model_name
         logger.info(f"🔄 [rerank] Загрузка модели reranker: {model_name}")
@@ -37,15 +37,15 @@ class Reranker:
 
     def rerank(self, query: str, documents: list[str], top_n: int = 10) -> list[tuple[int, float]]:
         """
-        Переранжировать документы относительно запроса.
+        Переранжировать документы относительно запроса
 
         Args:
-            query: Поисковый запрос
-            documents: Список документов для reranking
-            top_n: Количество возвращаемых результатов
+            query (str): Поисковый запрос
+            documents (list[str]): Список документов для reranking
+            top_n (int): Количество возвращаемых результатов
 
         Returns:
-            Список кортежей (индекс документа, relevance_score), отсортированный по убыванию score
+            list[tuple[int, float]]: Список кортежей (индекс документа, relevance_score), отсортированный по убыванию score
         """
         if not documents:
             return []
@@ -80,10 +80,10 @@ _reranker_instance: Reranker | None = None
 
 def get_reranker() -> Reranker:
     """
-    Получить экземпляр модели для reranking (singleton).
+    Получить экземпляр модели для reranking (singleton)
 
     Returns:
-        Экземпляр Reranker модели jinaai/jina-reranker-v3
+        Reranker: Экземпляр Reranker модели jinaai/jina-reranker-v3
     """
     global _reranker_instance
     if _reranker_instance is None:

@@ -36,12 +36,12 @@ class Embedding:
             model_name (str): Имя модели для загрузки
         """
         self.model_name = model_name
-        logger.info(f"🔄 [embedding] Инициализация модели: {model_name}")
+        logger.info(f"🔄 [retriever][dense_embedding] Инициализация модели: {model_name}")
         try:
-            self.model = SentenceTransformer(model_name)
-            logger.info(f"✅ [embedding] Модель {model_name} успешно инициализирована")
+            self.model = SentenceTransformer(model_name, trust_remote_code=True)
+            logger.info(f"✅ [retriever][dense_embedding] Модель {model_name} успешно инициализирована")
         except Exception as e:
-            logger.error(f"❌ [embedding] Ошибка инициализации модели: {e}")
+            logger.error(f"❌ [retriever][dense_embedding] Ошибка инициализации модели: {e}")
             raise
 
     def encode(
@@ -83,7 +83,7 @@ class Embedding:
         if truncate_dim is not None:
             encode_kwargs["truncate_dim"] = truncate_dim
 
-        logger.debug(f"🔄 [embedding] Кодирование {len(texts)} текстов, task: {task}")
+        logger.debug(f"🔄 [retriever][dense_embedding] Кодирование {len(texts)} текстов, task: {task}")
         embeddings = self.model.encode(texts, **encode_kwargs)
 
         # Возвращаем один embedding, если был передан один текст
@@ -97,12 +97,12 @@ class Embedding:
         Кодировать запрос в embedding
 
         Args:
-            query: Текст запроса
+            query (str): Текст запроса
 
         Returns:
-            Embedding запроса как список float
+            list[float]: Embedding запроса как список float
         """
-        logger.debug(f"🔄 [embedding] Кодирование запроса: {query[:50]}...")
+        logger.debug(f"🔄 [retriever][dense_embedding] Кодирование запроса: {query[:50]}...")
         return self.encode(query, task="retrieval.query")
 
     def encode_document(self, documents: list[str]) -> list[list[float]]:
@@ -110,12 +110,12 @@ class Embedding:
         Кодировать документы в embeddings
 
         Args:
-            documents: Список документов для кодирования
+            documents (list[str]): Список документов для кодирования
 
         Returns:
-            Список embeddings документов
+            list[list[float]]: Список embeddings документов
         """
-        logger.debug(f"🔄 [embedding] Кодирование {len(documents)} документов")
+        logger.debug(f"🔄 [retriever][dense_embedding] Кодирование {len(documents)} документов")
         return self.encode(documents, task="retrieval.passage")
 
     def get_sentence_embedding_dimension(self) -> int | None:
@@ -123,17 +123,17 @@ class Embedding:
         Получить размерность embeddings
 
         Returns:
-            Размерность embeddings или None, если не удалось определить
+            int | None: Размерность embeddings или None, если не удалось определить
         """
         embedding_dim = self.model.get_sentence_embedding_dimension()
 
         if embedding_dim is None:
             logger.warning(
-                "⚠️ [embedding] Не удалось определить размерность через get_sentence_embedding_dimension(), определяем эмпирически"
+                "⚠️ [retriever][dense_embedding] Не удалось определить размерность через get_sentence_embedding_dimension(), определяем эмпирически"
             )
             test_embedding = self.encode("test")
             embedding_dim = len(test_embedding)
-            logger.info(f"✅ [embedding] Размерность определена эмпирически: {embedding_dim}")
+            logger.info(f"✅ [retriever][dense_embedding] Размерность определена эмпирически: {embedding_dim}")
 
         return embedding_dim
 
@@ -142,7 +142,7 @@ class Embedding:
         Получить экземпляр модели SentenceTransformer
 
         Returns:
-            Экземпляр модели SentenceTransformer
+            SentenceTransformer: Экземпляр модели SentenceTransformer
         """
         return self.model
 
@@ -153,10 +153,10 @@ _embedding_instance: Embedding | None = None
 
 def get_embedding_model() -> Embedding:
     """
-    Получить экземпляр модели для embeddings (singleton).
+    Получить экземпляр модели для embeddings (singleton)
 
     Returns:
-        Экземпляр Embedding модели jinaai/jina-embeddings-v3
+        Embedding: Экземпляр Embedding модели jinaai/jina-embeddings-v3
     """
     global _embedding_instance
     if _embedding_instance is None:
