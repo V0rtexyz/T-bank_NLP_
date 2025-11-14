@@ -1,0 +1,147 @@
+import logging
+from typing import Literal
+
+from openai import AsyncOpenAI
+
+from tplexity.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+# Singleton для каждого провайдера
+_llm_instances: dict[str, "LLMClient"] = {}
+
+
+class LLMClient:
+    """Клиент для работы с LLM через OpenAI-совместимый API"""
+
+    def __init__(
+        self,
+        model: str,
+        api_key: str,
+        base_url: str | None = None,
+        timeout: int = 60,
+        **kwargs,
+    ):
+        """
+        Инициализация LLM клиента
+
+        Args:
+            model: Название модели
+            api_key: API ключ
+            base_url: Базовый URL для API (если None, используется стандартный OpenAI API)
+            timeout: Таймаут для запросов в секундах
+            **kwargs: Дополнительные параметры для AsyncOpenAI (например, default_headers={"x-folder-id": "..."})
+        """
+        self.model = model
+        self.api_key = api_key
+        self.base_url = base_url
+        self.timeout = timeout
+
+        logger.info(f"🔄 [llm_client] Инициализация LLM клиента: model={model}, base_url={base_url}")
+
+        self.client = AsyncOpenAI(
+            base_url=self.base_url,
+            api_key=self.api_key,
+            timeout=self.timeout,
+            **kwargs,
+        )
+
+        logger.info("✅ [llm_client] LLM клиент инициализирован")
+
+    async def generate(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
+        """
+        Генерация ответа через LLM
+
+        Args:
+            messages (list[dict[str, str]]): Список сообщений в формате OpenAI
+                Пример: [
+                    {"role": "system", "content": "Ты - помощник"},
+                    {"role": "user", "content": "Привет!"}
+                ]
+            temperature (float | None): Температура генерации (если None, используется из settings.llm.temperature)
+            max_tokens (int | None): Максимальное количество токенов (если None, используется из settings.llm.max_tokens)
+
+        Returns:
+            str: Сгенерированный ответ
+
+        Raises:
+            Exception: При ошибке вызова LLM API
+        """
+        temperature = temperature or settings.llm.temperature
+        max_tokens = max_tokens or settings.llm.max_tokens
+
+        logger.debug(f"🔄 [llm_client] Отправка запроса к LLM: model={self.model}")
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
+            answer = response.choices[0].message.content
+
+            logger.info("✅ [llm_client] Ответ получен от LLM")
+            return answer
+        except Exception as e:
+            logger.error(f"❌ [llm_client] Ошибка при вызове LLM: {e}")
+            raise
+
+
+def get_llm(provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"]) -> LLMClient:
+    """
+    Получить LLM клиент для указанного провайдера (singleton)
+
+    Args:
+        provider (Literal["qwen", "yandexgpt", "chatgpt", "gemini"]): Провайдер LLM
+
+    Returns:
+        LLMClient: Экземпляр LLM клиента для указанного провайдера
+    """
+    global _llm_instances
+
+    if provider in _llm_instances:
+        return _llm_instances[provider]
+
+    llm_settings = settings.llm
+
+    if provider == "qwen":
+        client = LLMClient(
+            model=llm_settings.qwen_model,
+            api_key=llm_settings.qwen_api_key,
+            base_url=llm_settings.qwen_base_url,
+            timeout=llm_settings.timeout,
+        )
+    elif provider == "yandexgpt":
+        model_name = f"gpt://{llm_settings.yandexgpt_folder_id}/{llm_settings.yandexgpt_model}"
+        client = LLMClient(
+            model=model_name,
+            api_key=llm_settings.yandexgpt_api_key,
+            base_url=llm_settings.yandexgpt_base_url,
+            timeout=llm_settings.timeout,
+            default_headers={"x-folder-id": llm_settings.yandexgpt_folder_id},
+        )
+    elif provider == "chatgpt":
+        client = LLMClient(
+            model=llm_settings.chatgpt_model,
+            api_key=llm_settings.chatgpt_api_key,
+            base_url=None,
+            timeout=llm_settings.timeout,
+        )
+    elif provider == "gemini":
+        client = LLMClient(
+            model=llm_settings.gemini_model,
+            api_key=llm_settings.gemini_api_key,
+            base_url=llm_settings.gemini_base_url,
+            timeout=llm_settings.timeout,
+        )
+
+    _llm_instances[provider] = client
+    return client
