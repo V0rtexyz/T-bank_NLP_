@@ -1,0 +1,356 @@
+import logging
+from typing import Literal
+from uuid import uuid4
+
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    Distance,
+    Fusion,
+    FusionQuery,
+    Modifier,
+    PointIdsList,
+    PointStruct,
+    Prefetch,
+    SparseVectorParams,
+    VectorParams,
+)
+
+from tplexity.retriever.dense_embedding import get_embedding_model
+from tplexity.retriever.sparse_embedding import get_bm25_model
+
+logger = logging.getLogger(__name__)
+
+
+class VectorSearch:
+    """Класс для векторного поиска через Qdrant с поддержкой dense и sparse векторов"""
+
+    def __init__(
+        self,
+        collection_name: str,
+        host: str,
+        port: int,
+        api_key: str | None,
+        timeout: int,
+        prefetch_ratio: float,
+    ):
+        """Инициализация векторного поисковика
+
+        Args:
+            collection_name (str): Имя коллекции в Qdrant
+            host (str): Хост Qdrant
+            port (int): Порт Qdrant
+            api_key (str | None): API ключ для Qdrant
+            timeout (int): Таймаут для подключения
+            prefetch_ratio (float): Во сколько раз больше результатов для prefetch
+        """
+        self.collection_name = collection_name
+        self.host = host
+        self.port = port
+        self.api_key = api_key
+        self.timeout = timeout
+        self.prefetch_ratio = prefetch_ratio
+
+        logger.info("🔄 [retriever][vector_search] Инициализация клиента Qdrant")
+        try:
+            if self.api_key:
+                self.client = QdrantClient(
+                    url=f"https://{self.host}:{self.port}",
+                    api_key=self.api_key,
+                    timeout=self.timeout,
+                )
+            else:
+                self.client = QdrantClient(
+                    host=self.host,
+                    port=self.port,
+                    timeout=self.timeout,
+                )
+            logger.info(f"✅ [retriever][vector_search] Клиент Qdrant инициализирован: {self.host}:{self.port}")
+        except Exception as e:
+            logger.error(f"❌ [retriever][vector_search] Ошибка инициализации клиента Qdrant: {e}")
+            raise
+
+        self.embedding_model = get_embedding_model()
+        self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
+        logger.info(f"✅ [retriever][vector_search] Dense модель инициализирована, размерность: {self.embedding_dim}")
+
+        self.bm25 = get_bm25_model()
+        logger.info("✅ [retriever][vector_search] BM25 модель инициализирована")
+
+        self._ensure_collection()
+
+    def _ensure_collection(self) -> None:
+        """Создать коллекцию с поддержкой dense и sparse векторов, если не существует"""
+        collections = self.client.get_collections().collections
+        collection_names = [col.name for col in collections]
+
+        if self.collection_name not in collection_names:
+            vectors_config = {
+                "dense": VectorParams(
+                    size=self.embedding_dim,
+                    distance=Distance.COSINE,
+                )
+            }
+
+            sparse_vectors_config = {
+                "bm25": SparseVectorParams(
+                    modifier=Modifier.IDF,
+                ),
+            }
+
+            self.client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config=vectors_config,
+                sparse_vectors_config=sparse_vectors_config,
+            )
+            logger.info(
+                f"✅ [retriever][vector_search] Коллекция {self.collection_name} создана с dense и sparse векторами"
+            )
+        else:
+            logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} уже существует")
+
+    def add_documents(
+        self,
+        documents: list[str],
+        ids: list[str] | None = None,
+        metadatas: list[dict] | None = None,
+    ) -> None:
+        """
+        Добавить документы в векторную базу данных с dense и sparse векторами
+
+        Args:
+            documents (list[str]): Список документов для добавления
+            ids (list[str] | None): Список ID для документов. Если None, генерируются UUID
+            metadatas (list[dict] | None): Список словарей с метаданными для каждого документа
+
+        Raises:
+            ValueError: Если входные данные невалидны
+        """
+        if not documents:
+            raise ValueError("Список документов не может быть пустым")
+
+        # Проверка на пустые строки
+        if any(not doc or not doc.strip() for doc in documents):
+            raise ValueError("Документы не могут быть пустыми или содержать только пробелы")
+
+        if metadatas is None:
+            metadatas = [{}] * len(documents)
+
+        if len(metadatas) != len(documents):
+            raise ValueError(
+                f"Количество метаданных ({len(metadatas)}) не совпадает с количеством документов ({len(documents)})"
+            )
+
+        if ids is None:
+            ids = [str(uuid4()) for _ in documents]
+
+        # Проверка на дубликаты ID
+        if len(ids) != len(set(ids)):
+            raise ValueError("ID документов должны быть уникальными")
+
+        # Генерация dense embeddings и sparse embeddings
+        dense_embeddings = self.embedding_model.encode_document(documents)
+        sparse_embeddings = self.bm25.encode_documents(documents)
+
+        # Подготовка точек для Qdrant с метаданными
+        points = []
+        for document_id, document, dense_emb, sparse_emb, metadata in zip(
+            ids, documents, dense_embeddings, sparse_embeddings, metadatas, strict=False
+        ):
+            vectors = {
+                "dense": dense_emb,
+                "bm25": sparse_emb.as_object(),
+            }
+            payload = {"text": document, **metadata}
+
+            points.append(PointStruct(id=document_id, vector=vectors, payload=payload))
+
+        # Загрузка в Qdrant
+        try:
+            self.client.upsert(collection_name=self.collection_name, points=points)
+            logger.info(
+                f"✅ [retriever][vector_search] Добавлено {len(documents)} документов в коллекцию {self.collection_name}"
+            )
+        except Exception as e:
+            logger.error(f"❌ [retriever][vector_search] Ошибка при добавлении документов в Qdrant: {e}")
+            raise
+
+    def search(
+        self,
+        query: str,
+        top_k: int = 10,
+        search_type: Literal["dense", "sparse", "hybrid"] = "hybrid",
+    ) -> list[tuple[str, float, str, dict | None]]:
+        """
+        Поиск документов по запросу с использованием различных типов поиска
+
+        Args:
+            query (str): Поисковый запрос
+            top_k (int): Количество возвращаемых результатов
+            search_type (Literal["dense", "sparse", "hybrid"]): Тип поиска (dense, sparse, hybrid). По умолчанию "hybrid"
+
+        Returns:
+            list[tuple[str, float, str, dict | None]]: Список кортежей (ID документа, score, текст, метаданные)
+
+        Raises:
+            ValueError: Если запрос пуст или параметры невалидны
+        """
+        if not query or not query.strip():
+            logger.warning("⚠️ [retriever][vector_search] Передан пустой запрос")
+            return []
+
+        if top_k < 1:
+            logger.error(f"❌ [retriever][vector_search] top_k должен быть >= 1, получено: {top_k}")
+            return []
+
+        if search_type == "hybrid":
+            return self._hybrid_search(query, top_k, self.prefetch_ratio)
+        elif search_type == "dense":
+            return self._dense_search(query, top_k)
+        elif search_type == "sparse":
+            return self._sparse_search(query, top_k)
+
+    def _dense_search(self, query: str, top_k: int) -> list[tuple[str, float, str, dict | None]]:
+        """
+        Поиск только по dense векторам
+
+        Args:
+            query (str): Поисковый запрос
+            top_k (int): Количество возвращаемых результатов
+
+        Returns:
+            list[tuple[str, float, str, dict | None]]: Список кортежей (ID документа, score, текст, метаданные)
+        """
+        logger.debug(f"🔍 [retriever][vector_search] Выполнение dense поиска для запроса: {query[:50]}...")
+        query_embedding = self.embedding_model.encode_query(query)
+
+        search_results = self.client.search(
+            collection_name=self.collection_name,
+            query_vector=("dense", query_embedding),
+            limit=top_k,
+            with_payload=True,
+        )
+
+        results = []
+        for result in search_results:
+            text = result.payload.get("text", "")
+            metadata = {k: v for k, v in result.payload.items() if k != "text"}
+            results.append((str(result.id), float(result.score), text, metadata))
+
+        return results
+
+    def _sparse_search(self, query: str, top_k: int) -> list[tuple[str, float, str, dict | None]]:
+        """
+        Поиск только по sparse векторам
+
+        Args:
+            query (str): Поисковый запрос
+            top_k (int): Количество возвращаемых результатов
+
+        Returns:
+            list[tuple[str, float, str, dict | None]]: Список кортежей (ID документа, score, текст, метаданные)
+        """
+        logger.debug(f"🔍 [retriever][vector_search] Выполнение sparse поиска для запроса: {query[:50]}...")
+        query_embedding = self.bm25.encode_query(query)
+
+        search_results = self.client.search(
+            collection_name=self.collection_name,
+            query_vector=("bm25", query_embedding),
+            limit=top_k,
+            with_payload=True,
+        )
+
+        results = []
+        for result in search_results:
+            text = result.payload.get("text", "")
+            metadata = {k: v for k, v in result.payload.items() if k != "text"}
+            results.append((str(result.id), float(result.score), text, metadata))
+
+        return results
+
+    def _hybrid_search(
+        self,
+        query: str,
+        top_k: int,
+        prefetch_ratio: float,
+    ) -> list[tuple[str, float, str, dict | None]]:
+        """
+        Гибридный поиск с использованием prefetch и RRF
+
+        Args:
+            query (str): Поисковый запрос
+            top_k (int): Количество возвращаемых результатов
+            prefetch_ratio (float): Во сколько раз больше результатов для prefetch
+
+        Returns:
+            list[tuple[str, float, str, dict | None]]: Список кортежей (ID документа, score, текст, метаданные)
+        """
+        logger.debug(f"🔍 [retriever][vector_search] Выполнение гибридного поиска для запроса: {query[:50]}...")
+        dense_query = self.embedding_model.encode_query(query)
+        sparse_query = self.bm25.encode_query(query)
+
+        prefetch = [
+            Prefetch(
+                query=dense_query,
+                using="dense",
+                limit=int(top_k * prefetch_ratio),
+            ),
+            Prefetch(
+                query=sparse_query,
+                using="bm25",
+                limit=int(top_k * prefetch_ratio),
+            ),
+        ]
+
+        search_results = self.client.query_points(
+            collection_name=self.collection_name,
+            prefetch=prefetch,
+            query=FusionQuery(
+                fusion=Fusion.RRF,
+            ),
+            with_payload=True,
+            limit=top_k,
+        )
+
+        results = []
+        for result in search_results.points:
+            text = result.payload.get("text", "")
+            metadata = {k: v for k, v in result.payload.items() if k != "text"}
+            results.append((str(result.id), float(result.score), text, metadata))
+
+        return results
+
+    def delete_documents(self, ids: list[str]) -> None:
+        """
+        Удалить документы из векторной базы данных по их ID
+
+        Args:
+            ids (list[str]): Список ID документов для удаления
+        """
+        if not ids:
+            logger.warning("⚠️ [retriever][vector_search] Передан пустой список ID для удаления")
+            return
+
+        logger.info(f"🔄 [retriever][vector_search] Удаление {len(ids)} документов из коллекции {self.collection_name}")
+        try:
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=PointIdsList(points=ids),
+            )
+            logger.info(
+                f"✅ [retriever][vector_search] Успешно удалено {len(ids)} документов из коллекции {self.collection_name}"
+            )
+        except Exception as e:
+            logger.error(f"❌ [retriever][vector_search] Ошибка при удалении документов из Qdrant: {e}")
+            raise
+
+    def delete_all_documents(self) -> None:
+        """Удалить все документы из коллекции"""
+        logger.warning("⚠️ [retriever][vector_search] Удаление всех документов из коллекции")
+        try:
+            self.client.delete_collection(collection_name=self.collection_name)
+            logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} удалена")
+            self._ensure_collection()
+            logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} пересоздана")
+        except Exception as e:
+            logger.error(f"❌ [retriever][vector_search] Ошибка при удалении всех документов: {e}")
+            raise
