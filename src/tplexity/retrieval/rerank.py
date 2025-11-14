@@ -1,52 +1,91 @@
-"""Модуль для reranking результатов."""
+import logging
 
-from sentence_transformers import CrossEncoder
+from transformers import AutoModel
+
+logger = logging.getLogger(__name__)
 
 
 class Reranker:
-    """Класс для reranking результатов поиска."""
+    """Класс для reranking результатов поиска с использованием jina-reranker-v3.
 
-    def __init__(self, model_name: str | None = None):
+    Модель поддерживает:
+    - Listwise reranking до 64 документов одновременно
+    - Мультиязычный reranking
+    - Контекстное окно до 131K токенов
+    """
+
+    def __init__(self, model_name: str = "jinaai/jina-reranker-v3"):
         """
         Инициализация reranker.
 
         Args:
-            model_name: Имя модели для reranking.
-                       Если None, используется модель по умолчанию
+            model_name: Имя модели для reranking. По умолчанию используется jinaai/jina-reranker-v3
         """
-        # Используем CrossEncoder для reranking
-        # По умолчанию используем модель для reranking
-        if model_name is None:
-            # Используем легкую модель для reranking
-            model_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-
         self.model_name = model_name
-        self.reranker = CrossEncoder(model_name)
+        logger.info(f"🔄 [rerank] Загрузка модели reranker: {model_name}")
 
-    def rerank(self, query: str, documents: list[str], top_k: int = 10) -> list[tuple[int, float]]:
+        try:
+            self.model = AutoModel.from_pretrained(
+                model_name,
+                dtype="auto",
+                trust_remote_code=True,
+            ).eval()
+            logger.info(f"✅ [rerank] Модель reranker {model_name} успешно загружена")
+        except Exception as e:
+            logger.error(f"❌ [rerank] Ошибка при загрузке модели reranker: {e}")
+            raise
+
+    def rerank(self, query: str, documents: list[str], top_n: int = 10) -> list[tuple[int, float]]:
         """
         Переранжировать документы относительно запроса.
 
         Args:
             query: Поисковый запрос
             documents: Список документов для reranking
-            top_k: Количество возвращаемых результатов
+            top_n: Количество возвращаемых результатов
 
         Returns:
-            Список кортежей (индекс документа, rerank score)
+            Список кортежей (индекс документа, relevance_score), отсортированный по убыванию score
         """
         if not documents:
             return []
 
-        # Подготовка пар (query, document) для модели
-        pairs = [[query, doc] for doc in documents]
+        if not query:
+            logger.warning("⚠️ [rerank] Пустой запрос для reranking")
+            return []
 
-        # Получение scores от reranker модели
-        scores = self.reranker.predict(pairs)
+        if self.model is None:
+            logger.error("❌ [rerank] Модель не инициализирована")
+            return [(idx, 0.0) for idx in range(min(len(documents), top_n))]
 
-        # Создание списка (индекс, score) и сортировка
-        results = [(idx, float(score)) for idx, score in enumerate(scores)]
-        results.sort(key=lambda x: x[1], reverse=True)
+        logger.debug(f"🔄 [rerank] Переранжирование {len(documents)} документов для запроса: {query[:50]}...")
+        try:
+            # results - это список словарей с ключами: document, relevance_score, index
+            results = self.model.rerank(query, documents, top_n=top_n)
 
-        # Возвращаем топ-k результатов
-        return results[:top_k]
+            # Преобразуем результаты в формат (index, score)
+            reranked = [(result["index"], float(result["relevance_score"])) for result in results]
+            logger.debug(f"✅ [rerank] Переранжирование завершено, возвращено {len(reranked)} результатов")
+            return reranked
+
+        except Exception as e:
+            logger.error(f"❌ [rerank] Ошибка при reranking: {e}")
+            # Возвращаем исходный порядок с нулевыми scores
+            return [(idx, 0.0) for idx in range(min(len(documents), top_n))]
+
+
+# Singleton
+_reranker_instance: Reranker | None = None
+
+
+def get_reranker() -> Reranker:
+    """
+    Получить экземпляр модели для reranking (singleton).
+
+    Returns:
+        Экземпляр Reranker модели jinaai/jina-reranker-v3
+    """
+    global _reranker_instance
+    if _reranker_instance is None:
+        _reranker_instance = Reranker()
+    return _reranker_instance

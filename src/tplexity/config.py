@@ -11,20 +11,10 @@ class Settings(BaseSettings):
     qdrant_collection_name: str = "documents"
     qdrant_timeout: int = 30
 
-    # Embeddings настройки
-    embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
-    embedding_dimension: int = 384
-
-    # BM25 настройки
-    bm25_k1: float = 1.5
-    bm25_b: float = 0.75
-
-    # RRF настройки
-    rrf_k: int = 60
-
-    # Rerank настройки
-    rerank_model_name: str | None = None
-    rerank_top_k: int = 10
+    # Retrieval настройки
+    prefetch_ratio: float = 1.0  # Во сколько раз больше результатов для prefetch
+    top_k: int = 10  # Количество результатов для гибридного поиска
+    top_n: int = 10  # Количество результатов для reranking
 
     model_config = SettingsConfigDict(
         env_file=".env",
