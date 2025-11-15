@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  # Retriever сервис - поиск документов
+  # Подключается к внешнему Qdrant через API (настройки в .env файле)
+  retriever:
+    build:
+      context: .
+      dockerfile: src/tplexity/retriever/Dockerfile
+    container_name: tplexity-retriever
+    ports:
+      - "8000:8000"
+    env_file:
+      - src/tplexity/retriever/.env
+    environment:
+      - QDRANT_HOST=${QDRANT_HOST:-localhost}
+      - QDRANT_PORT=${QDRANT_PORT:-6333}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT_COLLECTION_NAME=${QDRANT_COLLECTION_NAME:-documents}
+      - QDRANT_TIMEOUT=${QDRANT_TIMEOUT:-30}
+      - PREFETCH_RATIO=${PREFETCH_RATIO:-1.0}
+      - TOP_K=${TOP_K:-20}
+      - TOP_N=${TOP_N:-10}
+    networks:
+      - tplexity-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Generation сервис - генерация ответов с RAG
+  generation:
+    build:
+      context: .
+      dockerfile: src/tplexity/generation/Dockerfile
+    container_name: tplexity-generation
+    ports:
+      - "8002:8002"
+    env_file:
+      - src/tplexity/generation/.env
+      - src/tplexity/llm_client/.env
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-qwen}
+      - RETRIEVER_API_URL=http://retriever:8000
+      - RETRIEVER_API_TIMEOUT=${RETRIEVER_API_TIMEOUT:-30.0}
+      # LLM настройки
+      - TEMPERATURE=${TEMPERATURE:-0.7}
+      - MAX_TOKENS=${MAX_TOKENS:-1000}
+      - TIMEOUT=${TIMEOUT:-60}
+      # Qwen настройки
+      - QWEN_MODEL=${QWEN_MODEL:-QuantTrio/Qwen3-VL-30B-A3B-Instruct-AWQ}
+      - QWEN_API_KEY=${QWEN_API_KEY:-sk-no-key-required}
+      - QWEN_BASE_URL=${QWEN_BASE_URL:-http://195.209.210.28:8000/v1}
+      # YandexGPT настройки
+      - YANDEXGPT_MODEL=${YANDEXGPT_MODEL:-yandexgpt-lite}
+      - YANDEXGPT_API_KEY=${YANDEXGPT_API_KEY:-}
+      - YANDEXGPT_FOLDER_ID=${YANDEXGPT_FOLDER_ID:-}
+      - YANDEXGPT_BASE_URL=${YANDEXGPT_BASE_URL:-https://llm.api.cloud.yandex.net/v1}
+      # ChatGPT настройки
+      - CHATGPT_MODEL=${CHATGPT_MODEL:-gpt-4o-mini}
+      - CHATGPT_API_KEY=${CHATGPT_API_KEY:-}
+      # Gemini настройки
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_BASE_URL=${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
+    depends_on:
+      retriever:
+        condition: service_healthy
+    networks:
+      - tplexity-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Telegram Bot сервис
+  tg_bot:
+    build:
+      context: .
+      dockerfile: src/tplexity/tg_bot/Dockerfile
+    container_name: tplexity-tg-bot
+    ports:
+      - "8003:8003"
+    env_file:
+      - src/tplexity/tg_bot/.env
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN:-}
+      - GENERATION_API_URL=http://generation:8002
+      - GENERATION_API_TIMEOUT=${GENERATION_API_TIMEOUT:-60.0}
+    depends_on:
+      generation:
+        condition: service_healthy
+    networks:
+      - tplexity-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Telegram Parser сервис - мониторинг каналов
+  tg_parse:
+    build:
+      context: .
+      dockerfile: src/tplexity/tg_parse/Dockerfile
+    container_name: tplexity-tg-parse
+    ports:
+      - "8001:8001"
+    volumes:
+      - tg_parse_data:/app/data
+      - tg_parse_sessions:/app
+    env_file:
+      - src/tplexity/tg_parse/.env
+    environment:
+      - API_ID=${API_ID:-}
+      - API_HASH=${API_HASH:-}
+      - PHONE=${PHONE:-}
+      - SESSION_NAME=${SESSION_NAME:-my_session}
+      - CHANNELS=${CHANNELS:-omyinvestments,alfa_investments,tb_invest_official,SberInvestments,centralbank_russia,selfinvestor}
+      - CHECK_INTERVAL=${CHECK_INTERVAL:-60}
+      - INITIAL_MESSAGES_LIMIT=${INITIAL_MESSAGES_LIMIT:-200}
+      - WEBHOOK_URL=http://retriever:8000/retriever/documents
+      - DATA_DIR=/app/data
+    depends_on:
+      retriever:
+        condition: service_healthy
+    networks:
+      - tplexity-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  tplexity-network:
+    driver: bridge
+
+volumes:
+  tg_parse_data:
+    driver: local
+  tg_parse_sessions:
+    driver: local
+
