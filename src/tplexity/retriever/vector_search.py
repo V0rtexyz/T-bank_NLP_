@@ -3,12 +3,11 @@ import logging
 from typing import Literal
 from uuid import uuid4
 
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     Distance,
     Fusion,
     FusionQuery,
-    Mmr,
     Modifier,
     PointIdsList,
     PointStruct,
@@ -54,18 +53,11 @@ class VectorSearch:
 
         logger.info("🔄 [retriever][vector_search] Инициализация клиента Qdrant")
         try:
-            if self.api_key:
-                self.client = QdrantClient(
-                    url=f"https://{self.host}:{self.port}",
-                    api_key=self.api_key,
-                    timeout=self.timeout,
-                )
-            else:
-                self.client = QdrantClient(
-                    host=self.host,
-                    port=self.port,
-                    timeout=self.timeout,
-                )
+            self.client = AsyncQdrantClient(
+                url=f"https://{self.host}:{self.port}",
+                api_key=self.api_key,
+                timeout=self.timeout,
+            )
             logger.info(f"✅ [retriever][vector_search] Клиент Qdrant инициализирован: {self.host}:{self.port}")
         except Exception as e:
             logger.error(f"❌ [retriever][vector_search] Ошибка инициализации клиента Qdrant: {e}")
@@ -78,12 +70,10 @@ class VectorSearch:
         self.bm25 = get_bm25_model()
         logger.info("✅ [retriever][vector_search] BM25 модель инициализирована")
 
-        self._ensure_collection()
-
-    def _ensure_collection(self) -> None:
+    async def _ensure_collection(self) -> None:
         """Создать коллекцию с поддержкой dense и sparse векторов, если не существует"""
-        collections = self.client.get_collections().collections
-        collection_names = [col.name for col in collections]
+        collections = await self.client.get_collections()
+        collection_names = [col.name for col in collections.collections]
 
         if self.collection_name not in collection_names:
             vectors_config = {
@@ -99,7 +89,7 @@ class VectorSearch:
                 ),
             }
 
-            self.client.create_collection(
+            await self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=vectors_config,
                 sparse_vectors_config=sparse_vectors_config,
@@ -129,10 +119,6 @@ class VectorSearch:
         """
         if not documents:
             raise ValueError("Список документов не может быть пустым")
-
-        # Проверка на пустые строки
-        if any(not doc or not doc.strip() for doc in documents):
-            raise ValueError("Документы не могут быть пустыми или содержать только пробелы")
 
         if metadatas is None:
             metadatas = [{}] * len(documents)
@@ -177,9 +163,10 @@ class VectorSearch:
 
             points.append(PointStruct(id=document_id, vector=vectors, payload=payload))
 
-        # Загрузка в Qdrant (асинхронно)
+        await self._ensure_collection()
+
         try:
-            await asyncio.to_thread(self.client.upsert, collection_name=self.collection_name, points=points)
+            await self.client.upsert(collection_name=self.collection_name, points=points)
             logger.info(
                 f"✅ [retriever][vector_search] Добавлено {len(documents)} документов в коллекцию {self.collection_name}"
             )
@@ -236,8 +223,7 @@ class VectorSearch:
         logger.debug(f"🔍 [retriever][vector_search] Выполнение dense поиска для запроса: {query[:50]}...")
         query_embedding = await asyncio.to_thread(self.embedding_model.encode_query, query)
 
-        search_results = await asyncio.to_thread(
-            self.client.search,
+        search_results = await self.client.search(
             collection_name=self.collection_name,
             query_vector=("dense", query_embedding),
             limit=top_k,
@@ -266,8 +252,7 @@ class VectorSearch:
         logger.debug(f"🔍 [retriever][vector_search] Выполнение sparse поиска для запроса: {query[:50]}...")
         query_embedding = await asyncio.to_thread(self.bm25.encode_query, query)
 
-        search_results = await asyncio.to_thread(
-            self.client.search,
+        search_results = await self.client.search(
             collection_name=self.collection_name,
             query_vector=("bm25", query_embedding),
             limit=top_k,
@@ -311,7 +296,6 @@ class VectorSearch:
                 query=dense_query,
                 using="dense",
                 limit=int(top_k * prefetch_ratio),
-                mmr=Mmr(diversity=0.5),
             ),
             Prefetch(
                 query=sparse_query,
@@ -320,8 +304,7 @@ class VectorSearch:
             ),
         ]
 
-        search_results = await asyncio.to_thread(
-            self.client.query_points,
+        search_results = await self.client.query_points(
             collection_name=self.collection_name,
             prefetch=prefetch,
             query=FusionQuery(
@@ -354,8 +337,7 @@ class VectorSearch:
             return []
 
         try:
-            results = await asyncio.to_thread(
-                self.client.retrieve,
+            results = await self.client.retrieve(
                 collection_name=self.collection_name,
                 ids=doc_ids,
                 with_payload=True,
@@ -383,8 +365,7 @@ class VectorSearch:
             list[tuple[str, str, dict | None]]: Список кортежей (doc_id, text, metadata)
         """
         try:
-            points, _ = await asyncio.to_thread(
-                self.client.scroll,
+            points, _ = await self.client.scroll(
                 collection_name=self.collection_name,
                 limit=None,
                 with_payload=True,
@@ -415,8 +396,7 @@ class VectorSearch:
 
         logger.info(f"🔄 [retriever][vector_search] Удаление {len(ids)} документов из коллекции {self.collection_name}")
         try:
-            await asyncio.to_thread(
-                self.client.delete,
+            await self.client.delete(
                 collection_name=self.collection_name,
                 points_selector=PointIdsList(points=ids),
             )
@@ -431,9 +411,9 @@ class VectorSearch:
         """Удалить все документы из коллекции"""
         logger.warning("⚠️ [retriever][vector_search] Удаление всех документов из коллекции")
         try:
-            await asyncio.to_thread(self.client.delete_collection, collection_name=self.collection_name)
+            await self.client.delete_collection(collection_name=self.collection_name)
             logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} удалена")
-            self._ensure_collection()
+            await self._ensure_collection()
             logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} пересоздана")
         except Exception as e:
             logger.error(f"❌ [retriever][vector_search] Ошибка при удалении всех документов: {e}")
