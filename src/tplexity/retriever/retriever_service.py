@@ -2,7 +2,6 @@ import asyncio
 import logging
 
 from tplexity.retriever.config import settings
-from tplexity.retriever.reranker import get_reranker
 from tplexity.retriever.vector_search import VectorSearch
 
 logger = logging.getLogger(__name__)
@@ -13,15 +12,13 @@ class RetrieverService:
 
     1. Prefetch
     - Sparse Embeddings: BM25 с лемматизацией
-    - Dense Embeddings: Jina Embeddings v3
+    - Dense Embeddings: ai-forever/FRIDA
     2. RRF для объединения векторов
     3. Reranking: Jina Reranker v3
     """
 
     def __init__(
         self,
-        documents: list[str] | None = None,
-        metadatas: list[dict] | None = None,
         collection_name: str | None = None,
         host: str | None = None,
         port: int | None = None,
@@ -32,15 +29,12 @@ class RetrieverService:
         Инициализация гибридного поисковика
 
         Args:
-            documents (list[str] | None): Список документов для индексации
-            metadatas (list[dict] | None): Список словарей с метаданными для каждого документа
             collection_name (str | None): Имя коллекции в Qdrant
             host (str | None): Хост Qdrant
             port (int | None): Порт Qdrant
             api_key (str | None): API ключ для Qdrant
             timeout (int | None): Таймаут для подключения
         """
-        self.documents = documents or []
         logger.info("🔄 [retriever_service] Инициализация гибридного поисковика")
 
         # Единая точка чтения всех параметров из config
@@ -62,18 +56,11 @@ class RetrieverService:
             prefetch_ratio=self.prefetch_ratio,
         )
 
-        self.reranker = get_reranker()
-        logger.info(
-            f"✅ [retriever_service] Гибридный поисковик инициализирован: "
-            f"top_k={self.top_k}, top_n={self.top_n}, prefetch_ratio={self.prefetch_ratio}"
-        )
-
-        # Индексация документов в векторной базе, если они предоставлены
-        # Примечание: __init__ не может быть async, поэтому используем синхронный вызов через asyncio.run
-        if self.documents:
-            logger.info(f"🔄 [retriever_service] Индексация {len(self.documents)} документов")
-            asyncio.run(self.vector_search.add_documents(self.documents, ids=None, metadatas=metadatas))
-            logger.info("✅ [retriever_service] Индексация завершена")
+        # self.reranker = get_reranker()
+        # logger.info(
+        #     f"✅ [retriever_service] Гибридный поисковик инициализирован: "
+        #     f"top_k={self.top_k}, top_n={self.top_n}, prefetch_ratio={self.prefetch_ratio}"
+        # )
 
     def _init_config_params(
         self,
@@ -127,8 +114,7 @@ class RetrieverService:
 
         try:
             await self.vector_search.add_documents(documents, ids=None, metadatas=metadatas)
-            self.documents.extend(documents)
-            logger.info(f"✅ [retriever_service] Документы добавлены, всего документов: {len(self.documents)}")
+            logger.info("✅ [retriever_service] Документы добавлены в Qdrant")
         except Exception as e:
             logger.error(f"❌ [retriever_service] Ошибка при добавлении документов в Qdrant: {e}")
             raise
@@ -274,23 +260,18 @@ class RetrieverService:
 
         logger.info(f"🔄 [retriever_service] Удаление {len(doc_ids)} документов")
         try:
-            deleted_docs = await self.vector_search.get_documents(doc_ids)
-            deleted_texts = {text for _, text, _ in deleted_docs}
             # Удаляем из Qdrant
             await self.vector_search.delete_documents(doc_ids)
-            self.documents = [doc for doc in self.documents if doc not in deleted_texts]
             logger.info("✅ [retriever_service] Документы удалены из векторной базы")
         except Exception as e:
             logger.error(f"❌ [retriever_service] Ошибка при удалении документов: {e}")
             raise
 
     async def delete_all_documents(self) -> None:
-        """Удалить все документы из векторной базы данных и очистить внутренний список"""
+        """Удалить все документы из векторной базы данных"""
         logger.warning("⚠️ [retriever_service] Удаление всех документов")
         try:
             await self.vector_search.delete_all_documents()
-            self.documents = []
-
             logger.info("✅ [retriever_service] Все документы удалены")
         except Exception as e:
             logger.error(f"❌ [retriever_service] Ошибка при удалении всех документов: {e}")

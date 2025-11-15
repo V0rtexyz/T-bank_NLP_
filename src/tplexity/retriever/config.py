@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
     qdrant_api_key: str | None = "your qdrant api key here"
     qdrant_collection_name: str = "documents"
-    qdrant_timeout: int = 30
+    qdrant_timeout: int = 60
 
     # Retriever настройки
     prefetch_ratio: float = 1.0
