@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from tplexity.retriever.config import settings
+from tplexity.retriever.reranker import get_reranker
 from tplexity.retriever.vector_search import VectorSearch
 
 logger = logging.getLogger(__name__)
@@ -61,11 +62,11 @@ class RetrieverService:
             prefetch_ratio=self.prefetch_ratio,
         )
 
-        # self.reranker = get_reranker()
-        # logger.info(
-        #     f"✅ [retriever_service] Гибридный поисковик инициализирован: "
-        #     f"top_k={self.top_k}, top_n={self.top_n}, prefetch_ratio={self.prefetch_ratio}"
-        # )
+        self.reranker = get_reranker()
+        logger.info(
+            f"✅ [retriever_service] Гибридный поисковик инициализирован: "
+            f"top_k={self.top_k}, top_n={self.top_n}, prefetch_ratio={self.prefetch_ratio}"
+        )
 
         # Индексация документов в векторной базе, если они предоставлены
         # Примечание: __init__ не может быть async, поэтому используем синхронный вызов через asyncio.run
@@ -178,9 +179,13 @@ class RetrieverService:
 
         # Создаем словарь для быстрого доступа к метаданным и документам
         # Формат hybrid_results: (doc_id, score, text, metadata)
-        metadata_map = {doc_id: metadata for doc_id, _, _, metadata in hybrid_results}
-        doc_id_to_score = {doc_id: score for doc_id, score, _, _ in hybrid_results}
-        doc_id_to_text = {doc_id: text for doc_id, _, text, _ in hybrid_results}
+        metadata_map = {}
+        doc_id_to_score = {}
+        doc_id_to_text = {}
+        for doc_id, score, text, metadata in hybrid_results:
+            metadata_map[doc_id] = metadata
+            doc_id_to_score[doc_id] = score
+            doc_id_to_text[doc_id] = text
 
         # Шаг 2: Reranking (опционально)
         if use_rerank and hybrid_results:
@@ -269,8 +274,11 @@ class RetrieverService:
 
         logger.info(f"🔄 [retriever_service] Удаление {len(doc_ids)} документов")
         try:
+            deleted_docs = await self.vector_search.get_documents(doc_ids)
+            deleted_texts = {text for _, text, _ in deleted_docs}
             # Удаляем из Qdrant
             await self.vector_search.delete_documents(doc_ids)
+            self.documents = [doc for doc in self.documents if doc not in deleted_texts]
             logger.info("✅ [retriever_service] Документы удалены из векторной базы")
         except Exception as e:
             logger.error(f"❌ [retriever_service] Ошибка при удалении документов: {e}")
