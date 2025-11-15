@@ -1,13 +1,20 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class GenerationSettings(BaseModel):
-    """Настройки для generation микросервиса"""
+class Settings(BaseSettings):
+    """Настройки generation микросервиса из .env файла"""
 
-    # LLM провайдер (для выбора из settings.llm)
-    llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] = Field(
-        default="chatgpt",
-        description="Провайдер LLM: 'qwen', 'yandexgpt', 'chatgpt', 'gemini'",
+    llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] = "chatgpt"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
     )
+
+
+# Создаем экземпляр настроек
+settings = Settings()

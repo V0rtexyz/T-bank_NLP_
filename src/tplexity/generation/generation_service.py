@@ -1,7 +1,7 @@
 import logging
 from typing import Literal
 
-from tplexity.config import settings
+from tplexity.generation.config import settings
 from tplexity.llm_client import get_llm
 from tplexity.retriever.api.dependencies import get_retriever
 
@@ -38,7 +38,7 @@ class GenerationService:
         self.retriever = get_retriever()
 
         # Выбираем провайдер LLM
-        self.llm_provider = llm_provider or settings.generation.llm_provider
+        self.llm_provider = llm_provider or settings.llm_provider
         self.llm_client = get_llm(self.llm_provider)
 
         logger.info(f"✅ [generation_service] Сервис генерации инициализирован: provider={self.llm_provider}")

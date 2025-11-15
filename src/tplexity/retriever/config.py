@@ -1,19 +1,28 @@
-from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class RetrieverSettings(BaseModel):
-    """Настройки для retriever микросервиса"""
+class Settings(BaseSettings):
+    """Настройки retriever микросервиса из .env файла"""
 
     # Qdrant настройки
-    qdrant_host: str = Field(default="localhost", description="Хост Qdrant сервера")
-    qdrant_port: int = Field(default=6333, ge=1, le=65535, description="Порт Qdrant сервера")
-    qdrant_api_key: str | None = Field(default=None, description="API ключ для Qdrant")
-    qdrant_collection_name: str = Field(default="documents", description="Имя коллекции в Qdrant")
-    qdrant_timeout: int = Field(default=30, ge=1, description="Таймаут подключения к Qdrant в секундах")
+    qdrant_host: str = "localhost"
+    qdrant_port: int = 6333
+    qdrant_api_key: str | None = "ffsdfsdf"
+    qdrant_collection_name: str = "documents"
+    qdrant_timeout: int = 30
 
     # Retriever настройки
-    prefetch_ratio: float = Field(
-        default=1.0, ge=1.0, le=10.0, description="Во сколько раз документов для prefetch больше по сравнению с top_k"
+    prefetch_ratio: float = 1.0
+    top_k: int = 20
+    top_n: int = 10
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
     )
-    top_k: int = Field(default=20, ge=1, le=1000, description="Количество документов до реранка")
-    top_n: int = Field(default=10, ge=1, le=500, description="Количество документов после реранка (возвращаемые)")
+
+
+# Создаем экземпляр настроек
+settings = Settings()
