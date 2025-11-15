@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 # Создание FastAPI приложения
 app = FastAPI(
     title="Retriever API",
-    description="Микросервис для гибридного поиска по документам",
+    description="Микросервис для гибридного поиска по документам с возможностью добавления, получения и удаления документов",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -64,10 +64,12 @@ async def root():
         "service": "Retriever API",
         "version": "1.0.0",
         "endpoints": {
-            "documents": "POST /retriever/documents - Добавить документы",
+            "add_documents": "POST /retriever/documents - Добавить документы",
+            "get_documents": "POST /retriever/documents/get - Получить документы по ID",
+            "get_all_documents": "GET /retriever/documents/all - Получить все документы",
             "search": "POST /retriever/search - Поиск документов",
-            "delete": "DELETE /retriever/documents - Удалить документы",
-            "delete_all": "DELETE /retriever/documents/all - Удалить все документы",
+            "delete_documents": "DELETE /retriever/documents - Удалить документы",
+            "delete_all_documents": "DELETE /retriever/documents/all - Удалить все документы",
             "health": "GET /health - Health check",
             "docs": "GET /docs - Swagger UI",
         },
