@@ -1,9 +1,10 @@
 import logging
 from typing import Literal
 
+import httpx
+
 from tplexity.generation.config import settings
 from tplexity.llm_client import get_llm
-from tplexity.retriever.api.dependencies import get_retriever
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,68 @@ SYSTEM_PROMPT = """
 Ты - полезный AI-ассистент. Отвечай на вопросы пользователя на основе предоставленного контекста.
 Если в контексте нет информации для ответа, честно скажи об этом.
 """
+
+
+class RetrieverClient:
+    """Клиент для взаимодействия с Retriever API"""
+
+    def __init__(self, base_url: str, timeout: float = 30.0):
+        """
+        Инициализация клиента
+
+        Args:
+            base_url: Базовый URL Retriever API (например, http://localhost:8000)
+            timeout: Таймаут запросов в секундах
+        """
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        logger.info(f"🔄 [retriever_client] Инициализирован клиент для {self.base_url}")
+
+    async def search(
+        self, query: str, top_k: int | None = None, top_n: int | None = None, use_rerank: bool = True
+    ) -> list[tuple[str, float, str, dict | None]]:
+        """
+        Поиск релевантных документов
+
+        Args:
+            query: Поисковый запрос
+            top_k: Количество документов до реранка
+            top_n: Количество документов после реранка
+            use_rerank: Использовать ли reranking
+
+        Returns:
+            list[tuple[str, float, str, dict | None]]: Список кортежей (doc_id, score, text, metadata)
+        """
+        payload = {
+            "query": query,
+            "use_rerank": use_rerank,
+        }
+
+        if top_k is not None:
+            payload["top_k"] = top_k
+        if top_n is not None:
+            payload["top_n"] = top_n
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(f"{self.base_url}/retriever/search", json=payload)
+                response.raise_for_status()
+
+                data = response.json()
+                results = data.get("results", [])
+
+                # Преобразуем в формат (doc_id, score, text, metadata)
+                return [(r["doc_id"], r["score"], r["text"], r.get("metadata")) for r in results]
+
+        except httpx.TimeoutException:
+            logger.error(f"⏱️ [retriever_client] Таймаут при запросе к Retriever API")
+            raise
+        except httpx.HTTPStatusError as e:
+            logger.error(f"❌ [retriever_client] HTTP ошибка от Retriever API: {e.response.status_code}")
+            raise
+        except Exception as e:
+            logger.error(f"❌ [retriever_client] Ошибка при запросе к Retriever API: {e}")
+            raise
 
 
 class GenerationService:
@@ -26,16 +89,20 @@ class GenerationService:
     def __init__(
         self,
         llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None = None,
+        retriever_url: str | None = None,
     ):
         """
         Инициализация сервиса генерации
 
         Args:
             llm_provider (Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None): Провайдер LLM
+            retriever_url (str | None): URL Retriever API (если None, берется из config)
         """
         logger.info("🔄 [generation_service] Инициализация сервиса генерации")
 
-        self.retriever = get_retriever()
+        # Инициализируем клиент для Retriever API
+        retriever_url = retriever_url or settings.retriever_api_url
+        self.retriever_client = RetrieverClient(retriever_url, timeout=settings.retriever_api_timeout)
 
         # Выбираем провайдер LLM
         self.llm_provider = llm_provider or settings.llm_provider
@@ -115,16 +182,16 @@ class GenerationService:
         if not query or not query.strip():
             raise ValueError("Запрос не может быть пустым")
 
-        # Если top_k не указан, используем значение из retriever config
         # Если use_rerank не указан, используем True по умолчанию
         use_rerank = use_rerank if use_rerank is not None else True
 
         logger.info(f"🔄 [generation_service] Начало генерации для запроса: {query[:50]}...")
 
-        # Шаг 1: Поиск релевантных документов
-        # top_k и top_n передаются в search, если не указаны - используются значения из retriever config
+        # Шаг 1: Поиск релевантных документов через Retriever API
         logger.debug(f"🔍 [generation_service] Поиск релевантных документов, top_k={top_k}, use_rerank={use_rerank}")
-        context_documents = self.retriever.search(query, top_k=top_k, top_n=top_k, use_rerank=use_rerank)
+        context_documents = await self.retriever_client.search(
+            query=query, top_k=top_k, top_n=top_k, use_rerank=use_rerank
+        )
 
         if not context_documents:
             logger.warning("⚠️ [generation_service] Не найдено релевантных документов")

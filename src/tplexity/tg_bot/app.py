@@ -112,7 +112,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "tplexity.tg_bot.app:app",
         host="0.0.0.0",
-        port=8001,  # Другой порт, чтобы не конфликтовать с generation
+        port=8003,  # Порт для tg_bot (8000=retriever, 8001=tg_parse, 8002=generation)
         reload=True,  # Автоперезагрузка при изменении кода (для разработки)
     )
 

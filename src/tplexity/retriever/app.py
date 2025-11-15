@@ -1,7 +1,8 @@
 """
-Telegram Parser микросервис
+Retriever микросервис
 
-Микросервис для мониторинга Telegram каналов, чанкирования постов и отправки данных.
+Микросервис для гибридного поиска по документам с использованием
+dense + sparse embeddings и reranking.
 """
 
 import logging
@@ -10,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from tplexity.tg_parse.api import router
+from tplexity.retriever.api import router
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -24,15 +25,15 @@ async def lifespan(app: FastAPI):
 
     Запускается при старте и остановке приложения
     """
-    logger.info("🚀 [tg_parse] Запуск Telegram Parser микросервиса")
+    logger.info("🚀 [retriever] Запуск Retriever микросервиса")
     yield
-    logger.info("🛑 [tg_parse] Остановка Telegram Parser микросервиса")
+    logger.info("🛑 [retriever] Остановка Retriever микросервиса")
 
 
 # Создание FastAPI приложения
 app = FastAPI(
-    title="Telegram Parser API",
-    description="Микросервис для мониторинга Telegram каналов и чанкирования постов",
+    title="Retriever API",
+    description="Микросервис для гибридного поиска по документам",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -60,13 +61,13 @@ async def health_check():
 async def root():
     """Информация о сервисе"""
     return {
-        "service": "Telegram Parser API",
+        "service": "Retriever API",
         "version": "1.0.0",
         "endpoints": {
-            "download": "POST /download - Скачать последние n сообщений из каналов",
-            "start": "POST /start - Запустить мониторинг",
-            "stop": "POST /stop - Остановить мониторинг",
-            "status": "GET /status - Статус сервиса",
+            "documents": "POST /retriever/documents - Добавить документы",
+            "search": "POST /retriever/search - Поиск документов",
+            "delete": "DELETE /retriever/documents - Удалить документы",
+            "delete_all": "DELETE /retriever/documents/all - Удалить все документы",
             "health": "GET /health - Health check",
             "docs": "GET /docs - Swagger UI",
         },
@@ -76,11 +77,12 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
 
-    # Запуск сервера на порту 8001
+    # Запуск сервера на порту 8000
     uvicorn.run(
-        "tplexity.tg_parse.app:app",
+        "tplexity.retriever.app:app",
         host="0.0.0.0",
-        port=8001,
+        port=8000,
         reload=True,
         log_level="info",
     )
+

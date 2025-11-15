@@ -5,10 +5,10 @@ class Settings(BaseSettings):
     """Настройки Telegram Bot микросервиса из .env файла"""
 
     # Telegram Bot настройки
-    bot_token: str = "your_bot_token_here"
+    bot_token: str = ""
 
     # Generation API настройки
-    generation_api_url: str = "http://localhost:8000"
+    generation_api_url: str = "http://localhost:8002"
     generation_api_timeout: float = 60.0
 
     model_config = SettingsConfigDict(

@@ -1,13 +1,14 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
 
 class Settings(BaseSettings):
     """Настройки retriever микросервиса из .env файла"""
 
     # Qdrant настройки
-    qdrant_host: str = "localhost"
+    qdrant_host: str = ""
     qdrant_port: int = 6333
-    qdrant_api_key: str | None = "ffsdfsdf"
+    qdrant_api_key: str | None = ""
     qdrant_collection_name: str = "documents"
     qdrant_timeout: int = 30
 
