@@ -1,0 +1,120 @@
+services:
+  # Retriever сервис - поиск документов
+  # Подключается к внешнему Qdrant через API (настройки в .env файле)
+  retriever:
+    build:
+      context: .
+      dockerfile: src/tplexity/retriever/Dockerfile
+    image: t-bank-nlp-retriever
+    container_name: tplexity-retriever
+    ports:
+      - "8000:8000"
+    env_file:
+      - src/tplexity/retriever/.env
+    # Переменные окружения загружаются из .env файла
+    # environment секция не нужна, так как все переменные уже в .env
+    networks:
+      - tplexity-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Generation сервис - генерация ответов с RAG
+  generation:
+    build:
+      context: .
+      dockerfile: src/tplexity/generation/Dockerfile
+    image: t-bank-nlp-generation
+    container_name: tplexity-generation
+    ports:
+      - "8002:8002"
+    env_file:
+      - src/tplexity/generation/.env
+      - src/tplexity/llm_client/.env
+    environment:
+      # Только переменные, специфичные для Docker (внутренние адреса контейнеров)
+      - RETRIEVER_API_URL=http://retriever:8000
+      # Остальные переменные загружаются из .env файлов
+    depends_on:
+      retriever:
+        condition: service_healthy
+    networks:
+      - tplexity-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Telegram Bot сервис
+  tg_bot:
+    build:
+      context: .
+      dockerfile: src/tplexity/tg_bot/Dockerfile
+    image: t-bank-nlp-tg-bot
+    container_name: tplexity-tg-bot
+    ports:
+      - "8003:8003"
+    env_file:
+      - src/tplexity/tg_bot/.env
+    environment:
+      # Только переменные, специфичные для Docker (внутренние адреса контейнеров)
+      - GENERATION_API_URL=http://generation:8002
+      # Остальные переменные загружаются из .env файла
+    depends_on:
+      generation:
+        condition: service_healthy
+    networks:
+      - tplexity-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Telegram Parser сервис - мониторинг каналов
+  tg_parse:
+    build:
+      context: .
+      dockerfile: src/tplexity/tg_parse/Dockerfile
+    image: t-bank-nlp-tg-parse
+    container_name: tplexity-tg-parse
+    ports:
+      - "8001:8001"
+    volumes:
+      - tg_parse_data:/app/data
+      - tg_parse_sessions:/app
+    env_file:
+      - src/tplexity/tg_parse/.env
+    environment:
+      # Только переменные, специфичные для Docker (внутренние адреса контейнеров)
+      - WEBHOOK_URL=http://retriever:8000/retriever/documents
+      - DATA_DIR=/app/data
+      # Остальные переменные загружаются из .env файла
+    depends_on:
+      retriever:
+        condition: service_healthy
+    networks:
+      - tplexity-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  tplexity-network:
+    driver: bridge
+
+volumes:
+  tg_parse_data:
+    driver: local
+  tg_parse_sessions:
+    driver: local
+

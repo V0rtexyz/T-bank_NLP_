@@ -1,13 +1,22 @@
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
 
 
 class Settings(BaseSettings):
     """Настройки Telegram Bot микросервиса из .env файла"""
 
     # Telegram Bot настройки
-    bot_token: str = ""
+    bot_token: str = Field(default="")
+    
+    @field_validator('bot_token', mode='before')
+    @classmethod
+    def parse_bot_token(cls, v):
+        # Если передана пустая строка или None, используем дефолтное значение
+        if v == '' or v is None:
+            return ""
+        return v
 
     # Generation API настройки
     generation_api_url: str = "http://localhost:8002"
