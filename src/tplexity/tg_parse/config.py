@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +13,7 @@ class Settings(BaseSettings):
     session_name: str = "my_session"
 
     # Мониторинг каналов
-    channels: str = ""  # Список каналов через запятую
+    channels: str = "omyinvestments,alfa_investments,tb_invest_official,SberInvestments,centralbank_russia,selfinvestor"  # Список каналов через запятую
     check_interval: int = 60
     initial_messages_limit: int = 100
 
@@ -22,7 +24,7 @@ class Settings(BaseSettings):
     data_dir: str = "data"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(Path(__file__).parent / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
