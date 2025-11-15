@@ -15,13 +15,17 @@ COPY requirements.txt /app/
 # Установка Poetry и зависимостей
 RUN pip install --no-cache-dir poetry && \
     poetry config virtualenvs.create false && \
-    poetry install --no-dev --no-interaction --no-ansi
+    poetry install --only=main --no-root --no-interaction --no-ansi
 
 # Копирование исходного кода
 COPY src/ /app/src/
 
 # Установка переменных окружения по умолчанию
-ENV PYTHONPATH=/app
+# TODO: remove this after testing
+# ENV PYTHONPATH=/app
+
+ENV PYTHONPATH=/app/src
+
 # Переменные окружения передаются через env_file в docker-compose.yml
 # из файла src/tplexity/retriever/.env
 

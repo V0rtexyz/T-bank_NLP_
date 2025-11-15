@@ -15,7 +15,7 @@ COPY requirements.txt /app/
 # Установка Poetry и зависимостей
 RUN pip install --no-cache-dir poetry && \
     poetry config virtualenvs.create false && \
-    poetry install --no-dev --no-interaction --no-ansi
+    poetry install --only=main --no-root --no-interaction --no-ansi
 
 # Копирование исходного кода
 COPY src/ /app/src/
@@ -27,7 +27,8 @@ RUN mkdir -p /app/data
 # из файла src/tplexity/tg_parse/.env
 
 # Установка переменных окружения по умолчанию
-ENV PYTHONPATH=/app
+# ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src
 ENV WEBHOOK_URL=http://retriever:8000/retriever/documents
 ENV DATA_DIR=/app/data
 
