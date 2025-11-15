@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Literal
 from uuid import uuid4
@@ -7,6 +8,7 @@ from qdrant_client.models import (
     Distance,
     Fusion,
     FusionQuery,
+    Mmr,
     Modifier,
     PointIdsList,
     PointStruct,
@@ -108,7 +110,7 @@ class VectorSearch:
         else:
             logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} уже существует")
 
-    def add_documents(
+    async def add_documents(
         self,
         documents: list[str],
         ids: list[str] | None = None,
@@ -147,9 +149,20 @@ class VectorSearch:
         if len(ids) != len(set(ids)):
             raise ValueError("ID документов должны быть уникальными")
 
-        # Генерация dense embeddings и sparse embeddings
-        dense_embeddings = self.embedding_model.encode_document(documents)
-        sparse_embeddings = self.bm25.encode_documents(documents)
+        # Асинхронная генерация dense embeddings и sparse embeddings
+        logger.debug(
+            f"🔄 [retriever][vector_search] Начало параллельной генерации embeddings для {len(documents)} документов"
+        )
+
+        # Параллельное выполнение через asyncio.gather
+        dense_embeddings, sparse_embeddings = await asyncio.gather(
+            asyncio.to_thread(self.embedding_model.encode_document, documents),
+            asyncio.to_thread(self.bm25.encode_documents, documents),
+        )
+
+        logger.debug(
+            f"✅ [retriever][vector_search] Embeddings сгенерированы: dense={len(dense_embeddings)}, sparse={len(sparse_embeddings)}"
+        )
 
         # Подготовка точек для Qdrant с метаданными
         points = []
@@ -164,9 +177,9 @@ class VectorSearch:
 
             points.append(PointStruct(id=document_id, vector=vectors, payload=payload))
 
-        # Загрузка в Qdrant
+        # Загрузка в Qdrant (асинхронно)
         try:
-            self.client.upsert(collection_name=self.collection_name, points=points)
+            await asyncio.to_thread(self.client.upsert, collection_name=self.collection_name, points=points)
             logger.info(
                 f"✅ [retriever][vector_search] Добавлено {len(documents)} документов в коллекцию {self.collection_name}"
             )
@@ -174,7 +187,7 @@ class VectorSearch:
             logger.error(f"❌ [retriever][vector_search] Ошибка при добавлении документов в Qdrant: {e}")
             raise
 
-    def search(
+    async def search(
         self,
         query: str,
         top_k: int = 10,
@@ -203,13 +216,13 @@ class VectorSearch:
             return []
 
         if search_type == "hybrid":
-            return self._hybrid_search(query, top_k, self.prefetch_ratio)
+            return await self._hybrid_search(query, top_k, self.prefetch_ratio)
         elif search_type == "dense":
-            return self._dense_search(query, top_k)
+            return await self._dense_search(query, top_k)
         elif search_type == "sparse":
-            return self._sparse_search(query, top_k)
+            return await self._sparse_search(query, top_k)
 
-    def _dense_search(self, query: str, top_k: int) -> list[tuple[str, float, str, dict | None]]:
+    async def _dense_search(self, query: str, top_k: int) -> list[tuple[str, float, str, dict | None]]:
         """
         Поиск только по dense векторам
 
@@ -221,9 +234,10 @@ class VectorSearch:
             list[tuple[str, float, str, dict | None]]: Список кортежей (ID документа, score, текст, метаданные)
         """
         logger.debug(f"🔍 [retriever][vector_search] Выполнение dense поиска для запроса: {query[:50]}...")
-        query_embedding = self.embedding_model.encode_query(query)
+        query_embedding = await asyncio.to_thread(self.embedding_model.encode_query, query)
 
-        search_results = self.client.search(
+        search_results = await asyncio.to_thread(
+            self.client.search,
             collection_name=self.collection_name,
             query_vector=("dense", query_embedding),
             limit=top_k,
@@ -238,7 +252,7 @@ class VectorSearch:
 
         return results
 
-    def _sparse_search(self, query: str, top_k: int) -> list[tuple[str, float, str, dict | None]]:
+    async def _sparse_search(self, query: str, top_k: int) -> list[tuple[str, float, str, dict | None]]:
         """
         Поиск только по sparse векторам
 
@@ -250,9 +264,10 @@ class VectorSearch:
             list[tuple[str, float, str, dict | None]]: Список кортежей (ID документа, score, текст, метаданные)
         """
         logger.debug(f"🔍 [retriever][vector_search] Выполнение sparse поиска для запроса: {query[:50]}...")
-        query_embedding = self.bm25.encode_query(query)
+        query_embedding = await asyncio.to_thread(self.bm25.encode_query, query)
 
-        search_results = self.client.search(
+        search_results = await asyncio.to_thread(
+            self.client.search,
             collection_name=self.collection_name,
             query_vector=("bm25", query_embedding),
             limit=top_k,
@@ -267,7 +282,7 @@ class VectorSearch:
 
         return results
 
-    def _hybrid_search(
+    async def _hybrid_search(
         self,
         query: str,
         top_k: int,
@@ -285,14 +300,18 @@ class VectorSearch:
             list[tuple[str, float, str, dict | None]]: Список кортежей (ID документа, score, текст, метаданные)
         """
         logger.debug(f"🔍 [retriever][vector_search] Выполнение гибридного поиска для запроса: {query[:50]}...")
-        dense_query = self.embedding_model.encode_query(query)
-        sparse_query = self.bm25.encode_query(query)
+        # Параллельная генерация query embeddings
+        dense_query, sparse_query = await asyncio.gather(
+            asyncio.to_thread(self.embedding_model.encode_query, query),
+            asyncio.to_thread(self.bm25.encode_query, query),
+        )
 
         prefetch = [
             Prefetch(
                 query=dense_query,
                 using="dense",
                 limit=int(top_k * prefetch_ratio),
+                mmr=Mmr(diversity=0.5),
             ),
             Prefetch(
                 query=sparse_query,
@@ -301,7 +320,8 @@ class VectorSearch:
             ),
         ]
 
-        search_results = self.client.query_points(
+        search_results = await asyncio.to_thread(
+            self.client.query_points,
             collection_name=self.collection_name,
             prefetch=prefetch,
             query=FusionQuery(
@@ -319,7 +339,70 @@ class VectorSearch:
 
         return results
 
-    def delete_documents(self, ids: list[str]) -> None:
+    async def get_documents(self, doc_ids: list[str]) -> list[tuple[str, str, dict | None]]:
+        """
+        Получить документы по их ID
+
+        Args:
+            doc_ids (list[str]): Список ID документов
+
+        Returns:
+            list[tuple[str, str, dict | None]]: Список кортежей (doc_id, text, metadata)
+        """
+        if not doc_ids:
+            logger.warning("⚠️ [retriever][vector_search] Передан пустой список ID для получения документов")
+            return []
+
+        try:
+            results = await asyncio.to_thread(
+                self.client.retrieve,
+                collection_name=self.collection_name,
+                ids=doc_ids,
+                with_payload=True,
+            )
+
+            documents = []
+            for point in results:
+                text = point.payload.get("text", "")
+                metadata = {k: v for k, v in point.payload.items() if k != "text"}
+                documents.append((str(point.id), text, metadata if metadata else None))
+
+            logger.info(
+                f"✅ [retriever][vector_search] Получено {len(documents)} документов из {len(doc_ids)} запрошенных"
+            )
+            return documents
+        except Exception as e:
+            logger.error(f"❌ [retriever][vector_search] Ошибка при получении документов: {e}")
+            raise
+
+    async def get_all_documents(self) -> list[tuple[str, str, dict | None]]:
+        """
+        Получить все документы из коллекции
+
+        Returns:
+            list[tuple[str, str, dict | None]]: Список кортежей (doc_id, text, metadata)
+        """
+        try:
+            points, _ = await asyncio.to_thread(
+                self.client.scroll,
+                collection_name=self.collection_name,
+                limit=None,
+                with_payload=True,
+            )
+
+            documents = []
+            for point in points:
+                text = point.payload.get("text", "")
+                metadata = {k: v for k, v in point.payload.items() if k != "text"}
+                documents.append((str(point.id), text, metadata if metadata else None))
+
+            logger.info(f"✅ [retriever][vector_search] Получено {len(documents)} документов из коллекции")
+            return documents
+        except Exception as e:
+            logger.error(f"❌ [retriever][vector_search] Ошибка при получении всех документов: {e}")
+            raise
+
+    async def delete_documents(self, ids: list[str]) -> None:
         """
         Удалить документы из векторной базы данных по их ID
 
@@ -332,7 +415,8 @@ class VectorSearch:
 
         logger.info(f"🔄 [retriever][vector_search] Удаление {len(ids)} документов из коллекции {self.collection_name}")
         try:
-            self.client.delete(
+            await asyncio.to_thread(
+                self.client.delete,
                 collection_name=self.collection_name,
                 points_selector=PointIdsList(points=ids),
             )
@@ -343,11 +427,11 @@ class VectorSearch:
             logger.error(f"❌ [retriever][vector_search] Ошибка при удалении документов из Qdrant: {e}")
             raise
 
-    def delete_all_documents(self) -> None:
+    async def delete_all_documents(self) -> None:
         """Удалить все документы из коллекции"""
         logger.warning("⚠️ [retriever][vector_search] Удаление всех документов из коллекции")
         try:
-            self.client.delete_collection(collection_name=self.collection_name)
+            await asyncio.to_thread(self.client.delete_collection, collection_name=self.collection_name)
             logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} удалена")
             self._ensure_collection()
             logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} пересоздана")

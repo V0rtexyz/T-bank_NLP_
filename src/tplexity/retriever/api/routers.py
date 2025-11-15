@@ -1,5 +1,3 @@
-"""Роутеры для retriever микросервиса"""
-
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,7 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from tplexity.retriever.api.dependencies import get_retriever
 from tplexity.retriever.api.schemas import (
     DeleteDocumentsRequest,
+    DocumentResponse,
     DocumentsRequest,
+    DocumentsResponse,
+    GetDocumentsRequest,
     MessageResponse,
     SearchRequest,
     SearchResponse,
@@ -41,7 +42,7 @@ async def add_documents(
             [doc.metadata for doc in request.documents] if any(doc.metadata for doc in request.documents) else None
         )
 
-        retriever.add_documents(documents, metadatas=metadatas)
+        await retriever.add_documents(documents, metadatas=metadatas)
 
         logger.info(f"✅ [retriever.api] Добавлено {len(documents)} документов")
         return MessageResponse(
@@ -72,7 +73,7 @@ async def search(
         SearchResponse: Результаты поиска
     """
     try:
-        results = retriever.search(
+        results = await retriever.search(
             query=request.query,
             top_k=request.top_k,
             top_n=request.top_n,
@@ -103,6 +104,84 @@ async def search(
         ) from e
 
 
+@router.post("/documents/get", response_model=DocumentsResponse)
+async def get_documents(
+    request: GetDocumentsRequest,
+    retriever: RetrieverService = Depends(get_retriever),
+) -> DocumentsResponse:
+    """
+    Получить документы по их ID
+
+    Args:
+        request: Запрос с ID документов для получения
+        retriever: Экземпляр RetrieverService
+
+    Returns:
+        DocumentsResponse: Список документов с текстами и метаданными
+    """
+    try:
+        results = await retriever.get_documents(request.doc_ids)
+
+        documents = [
+            DocumentResponse(
+                doc_id=doc_id,
+                text=text,
+                metadata=metadata,
+            )
+            for doc_id, text, metadata in results
+        ]
+
+        logger.info(f"✅ [retriever.api] Получено {len(documents)} документов")
+        return DocumentsResponse(
+            documents=documents,
+            total=len(documents),
+        )
+    except Exception as e:
+        logger.error(f"❌ [retriever.api] Ошибка при получении документов: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при получении документов: {str(e)}",
+        ) from e
+
+
+@router.get("/documents/all", response_model=DocumentsResponse)
+async def get_all_documents(
+    retriever: RetrieverService = Depends(get_retriever),
+) -> DocumentsResponse:
+    """
+    Получить все документы из векторной базы данных
+
+    Args:
+        retriever: Экземпляр RetrieverService
+
+    Returns:
+        DocumentsResponse: Список всех документов с текстами и метаданными
+    """
+    try:
+        results = await retriever.get_all_documents()
+
+        documents = [
+            DocumentResponse(
+                doc_id=doc_id,
+                text=text,
+                metadata=metadata,
+            )
+            for doc_id, text, metadata in results
+        ]
+
+        logger.info(f"✅ [retriever.api] Получено {len(documents)} документов")
+        return DocumentsResponse(
+            documents=documents,
+            total=len(documents),
+        )
+    except Exception as e:
+        logger.error(f"❌ [retriever.api] Ошибка при получении всех документов: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при получении всех документов: {str(e)}",
+        ) from e
+
+
 @router.delete("/documents", response_model=MessageResponse)
 async def delete_documents(
     request: DeleteDocumentsRequest,
@@ -119,7 +198,7 @@ async def delete_documents(
         MessageResponse: Сообщение об успешном удалении
     """
     try:
-        retriever.delete_documents(request.doc_ids)
+        await retriever.delete_documents(request.doc_ids)
 
         logger.info(f"✅ [retriever.api] Удалено {len(request.doc_ids)} документов")
         return MessageResponse(
@@ -146,7 +225,7 @@ async def delete_all_documents(retriever: RetrieverService = Depends(get_retriev
         MessageResponse: Сообщение об успешном удалении
     """
     try:
-        retriever.delete_all_documents()
+        await retriever.delete_all_documents()
 
         logger.info("✅ [retriever.api] Все документы удалены")
         return MessageResponse(

@@ -1,7 +1,3 @@
-"""
-Точка входа для запуска Retriever микросервиса
-"""
-
 if __name__ == "__main__":
     import uvicorn
 
