@@ -1,80 +1,41 @@
-from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class LLMSettings(BaseModel):
-    """Настройки для LLM клиентов (общие и для каждого провайдера)"""
+class Settings(BaseSettings):
+    """Настройки LLM клиента из .env файла"""
 
     # Общие настройки генерации (для всех провайдеров)
-    temperature: float = Field(
-        default=0.7,
-        ge=0.0,
-        le=2.0,
-        description="Температура генерации по умолчанию (0.0 - детерминированная, 2.0 - креативная)",
-    )
-    max_tokens: int = Field(
-        default=1000,
-        ge=1,
-        le=4000,
-        description="Максимальное количество токенов в ответе по умолчанию",
-    )
-    timeout: int = Field(
-        default=60,
-        ge=1,
-        description="Таймаут для запросов к LLM в секундах",
-    )
+    temperature: float = 0.7
+    max_tokens: int = 1000
+    timeout: int = 60
 
     # Qwen настройки
-    qwen_model: str = Field(
-        default="QuantTrio/Qwen3-VL-30B-A3B-Instruct-AWQ",
-        description="Название модели Qwen",
-    )
-    qwen_api_key: str = Field(
-        default="sk-no-key-required",
-        description="API ключ для Qwen",
-    )
-    qwen_base_url: str | None = Field(
-        default="http://195.209.210.28:8000/v1",
-        description="Базовый URL для Qwen API",
-    )
+    qwen_model: str = "QuantTrio/Qwen3-VL-30B-A3B-Instruct-AWQ"
+    qwen_api_key: str = "sk-no-key-required"
+    qwen_base_url: str = "http://195.209.210.28:8000/v1"
 
     # YandexGPT настройки
-    yandexgpt_model: str = Field(
-        default="yandexgpt-lite",
-        description="Название модели YandexGPT",
-    )
-    yandexgpt_api_key: str = Field(
-        default="",
-        description="API ключ для YandexGPT",
-    )
-    yandexgpt_folder_id: str = Field(
-        default="",
-        description="Folder ID для YandexGPT (обязательно для работы)",
-    )
-    yandexgpt_base_url: str | None = Field(
-        default="https://llm.api.cloud.yandex.net/v1",
-        description="Базовый URL для YandexGPT API",
-    )
+    yandexgpt_model: str = "yandexgpt-lite"
+    yandexgpt_api_key: str = ""
+    yandexgpt_folder_id: str = ""
+    yandexgpt_base_url: str = "https://llm.api.cloud.yandex.net/v1"
 
     # ChatGPT настройки
-    chatgpt_model: str = Field(
-        default="gpt-4o-mini",
-        description="Название модели ChatGPT",
-    )
-    chatgpt_api_key: str = Field(
-        default="",
-        description="API ключ для ChatGPT (OpenAI)",
-    )
+    chatgpt_model: str = "gpt-4o-mini"
+    chatgpt_api_key: str = ""
 
     # Gemini настройки
-    gemini_model: str = Field(
-        default="gemini-2.5-flash",
-        description="Название модели Gemini",
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_api_key: str = ""
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
     )
-    gemini_api_key: str = Field(
-        default="",
-        description="API ключ для Gemini",
-    )
-    gemini_base_url: str | None = Field(
-        default="https://generativelanguage.googleapis.com/v1beta/openai/",
-        description="Базовый URL для Gemini API",
-    )
+
+
+# Создаем экземпляр настроек
+settings = Settings()

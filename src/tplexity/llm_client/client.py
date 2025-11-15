@@ -3,7 +3,7 @@ from typing import Literal
 
 from openai import AsyncOpenAI
 
-from tplexity.config import settings
+from tplexity.llm_client.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +73,8 @@ class LLMClient:
         Raises:
             Exception: При ошибке вызова LLM API
         """
-        temperature = temperature or settings.llm.temperature
-        max_tokens = max_tokens or settings.llm.max_tokens
+        temperature = temperature or settings.temperature
+        max_tokens = max_tokens or settings.max_tokens
 
         logger.debug(f"🔄 [llm_client] Отправка запроса к LLM: model={self.model}")
 
@@ -110,37 +110,35 @@ def get_llm(provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"]) -> LLMC
     if provider in _llm_instances:
         return _llm_instances[provider]
 
-    llm_settings = settings.llm
-
     if provider == "qwen":
         client = LLMClient(
-            model=llm_settings.qwen_model,
-            api_key=llm_settings.qwen_api_key,
-            base_url=llm_settings.qwen_base_url,
-            timeout=llm_settings.timeout,
+            model=settings.qwen_model,
+            api_key=settings.qwen_api_key,
+            base_url=settings.qwen_base_url,
+            timeout=settings.timeout,
         )
     elif provider == "yandexgpt":
-        model_name = f"gpt://{llm_settings.yandexgpt_folder_id}/{llm_settings.yandexgpt_model}"
+        model_name = f"gpt://{settings.yandexgpt_folder_id}/{settings.yandexgpt_model}"
         client = LLMClient(
             model=model_name,
-            api_key=llm_settings.yandexgpt_api_key,
-            base_url=llm_settings.yandexgpt_base_url,
-            timeout=llm_settings.timeout,
-            default_headers={"x-folder-id": llm_settings.yandexgpt_folder_id},
+            api_key=settings.yandexgpt_api_key,
+            base_url=settings.yandexgpt_base_url,
+            timeout=settings.timeout,
+            default_headers={"x-folder-id": settings.yandexgpt_folder_id},
         )
     elif provider == "chatgpt":
         client = LLMClient(
-            model=llm_settings.chatgpt_model,
-            api_key=llm_settings.chatgpt_api_key,
+            model=settings.chatgpt_model,
+            api_key=settings.chatgpt_api_key,
             base_url=None,
-            timeout=llm_settings.timeout,
+            timeout=settings.timeout,
         )
     elif provider == "gemini":
         client = LLMClient(
-            model=llm_settings.gemini_model,
-            api_key=llm_settings.gemini_api_key,
-            base_url=llm_settings.gemini_base_url,
-            timeout=llm_settings.timeout,
+            model=settings.gemini_model,
+            api_key=settings.gemini_api_key,
+            base_url=settings.gemini_base_url,
+            timeout=settings.timeout,
         )
 
     _llm_instances[provider] = client

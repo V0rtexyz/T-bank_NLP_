@@ -1,6 +1,6 @@
 import logging
 
-from tplexity.config import settings
+from tplexity.retriever.config import settings
 from tplexity.retriever.reranker import get_reranker
 from tplexity.retriever.vector_search import VectorSearch
 
@@ -93,16 +93,16 @@ class RetrieverService:
             timeout: Таймаут (если None, берется из config)
         """
         # Qdrant параметры
-        self.collection_name = collection_name or settings.retriever.qdrant_collection_name
-        self.host = host or settings.retriever.qdrant_host
-        self.port = port or settings.retriever.qdrant_port
-        self.api_key = api_key if api_key is not None else settings.retriever.qdrant_api_key
-        self.timeout = timeout or settings.retriever.qdrant_timeout
+        self.collection_name = collection_name or settings.qdrant_collection_name
+        self.host = host or settings.qdrant_host
+        self.port = port or settings.qdrant_port
+        self.api_key = api_key or settings.qdrant_api_key
+        self.timeout = timeout or settings.qdrant_timeout
 
         # Retriever параметры
-        self.top_k = settings.retriever.top_k
-        self.top_n = settings.retriever.top_n
-        self.prefetch_ratio = settings.retriever.prefetch_ratio
+        self.top_k = settings.top_k
+        self.top_n = settings.top_n
+        self.prefetch_ratio = settings.prefetch_ratio
 
     def add_documents(self, documents: list[str], metadatas: list[dict] | None = None) -> None:
         """
