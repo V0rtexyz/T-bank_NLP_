@@ -1,7 +1,7 @@
 """Роутеры для Telegram Monitor микросервиса"""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
@@ -79,7 +79,7 @@ async def get_status(
     return StatusResponse(
         status="running" if is_monitoring else "stopped",
         config=config.model_dump() if config else None,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
 
 
@@ -117,7 +117,7 @@ async def start_monitoring(
         )
 
     channels_list = config.get_channels_list() if config else []
-    
+
     if not config or not channels_list:
         logger.error("❌ [tg_parse.api] Конфигурация не загружена или список каналов пуст")
         raise HTTPException(
@@ -226,7 +226,7 @@ async def download_messages(
         HTTPException: 400 если конфигурация неверная, 500 при ошибке
     """
     channels_list = config.get_channels_list() if config else []
-    
+
     if not config or not channels_list:
         logger.error("❌ [tg_parse.api] Конфигурация не загружена или список каналов пуст")
         raise HTTPException(
@@ -283,4 +283,3 @@ async def download_messages(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при скачивании: {str(e)}",
         ) from e
-

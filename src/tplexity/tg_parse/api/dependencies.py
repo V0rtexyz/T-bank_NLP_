@@ -71,4 +71,3 @@ def reset_service():
     global _service_instance, _is_monitoring
     _service_instance = None
     _is_monitoring = False
-

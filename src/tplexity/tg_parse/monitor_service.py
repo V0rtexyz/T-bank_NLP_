@@ -229,9 +229,7 @@ class TelegramMonitorService:
 
             # Отправляем в Retriever API
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self.webhook_url, json={"documents": documents}, timeout=30.0
-                )
+                response = await client.post(self.webhook_url, json={"documents": documents}, timeout=30.0)
                 response.raise_for_status()
                 logger.info(f"📤 [monitor_service] Отправлено {len(documents)} документов в {self.webhook_url}")
         except Exception as e:
@@ -318,4 +316,3 @@ class TelegramMonitorService:
                 logger.error(f"❌ [monitor_service] Ошибка при отключении клиента: {e}")
 
         logger.info("✅ [monitor_service] Мониторинг остановлен")
-

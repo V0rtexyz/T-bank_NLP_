@@ -66,7 +66,7 @@ class RetrieverClient:
                 return [(r["doc_id"], r["score"], r["text"], r.get("metadata")) for r in results]
 
         except httpx.TimeoutException:
-            logger.error(f"⏱️ [retriever_client] Таймаут при запросе к Retriever API")
+            logger.error("⏱️ [retriever_client] Таймаут при запросе к Retriever API")
             raise
         except httpx.HTTPStatusError as e:
             logger.error(f"❌ [retriever_client] HTTP ошибка от Retriever API: {e.response.status_code}")

@@ -30,19 +30,20 @@ class HealthResponse(BaseModel):
 async def lifespan(app: FastAPI):
     """Управление жизненным циклом приложения"""
     import asyncio
+
     from tplexity.tg_bot.api.dependencies import get_bot_app
     from tplexity.tg_bot.bot import start_polling
-    
+
     logger.info("🚀 [Telegram Bot Service] Запуск микросервиса")
-    
+
     # Инициализируем бота и запускаем polling в фоне
     bot_app = get_bot_app()
-    
+
     # Запускаем polling в фоновой задаче
     polling_task = asyncio.create_task(start_polling(bot_app))
-    
+
     yield
-    
+
     # Останавливаем polling
     logger.info("🛑 [Telegram Bot Service] Остановка микросервиса")
     polling_task.cancel()
@@ -50,9 +51,9 @@ async def lifespan(app: FastAPI):
         await polling_task
     except asyncio.CancelledError:
         pass
-    
+
     # Закрываем клиент Generation API
-    generation_client = bot_app.bot_data.get('generation_client')
+    generation_client = bot_app.bot_data.get("generation_client")
     if generation_client:
         await generation_client.close()
         logger.info("Соединение с Generation API закрыто")
@@ -115,4 +116,3 @@ if __name__ == "__main__":
         port=8003,  # Порт для tg_bot (8000=retriever, 8001=tg_parse, 8002=generation)
         reload=True,  # Автоперезагрузка при изменении кода (для разработки)
     )
-

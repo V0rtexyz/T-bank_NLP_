@@ -1,10 +1,11 @@
 """Роутеры для Telegram Bot микросервиса"""
 
 import logging
+
 from fastapi import APIRouter, Depends
+from telegram.ext import Application
 
 from tplexity.tg_bot.api.dependencies import get_bot_app
-from telegram.ext import Application
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +18,10 @@ async def status(
 ) -> dict:
     """
     Статус бота
-    
+
     Args:
         bot_app: Экземпляр Telegram Application
-        
+
     Returns:
         dict: Статус бота
     """
@@ -38,4 +39,3 @@ async def status(
             "status": "error",
             "error": str(e),
         }
-

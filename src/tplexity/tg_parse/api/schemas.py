@@ -45,4 +45,3 @@ class RootResponse(BaseModel):
     service: str = Field(..., description="Название сервиса")
     version: str = Field(..., description="Версия сервиса")
     endpoints: dict = Field(..., description="Описание эндпоинтов")
-

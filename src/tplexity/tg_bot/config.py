@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     """Настройки Telegram Bot микросервиса из .env файла"""
 
     # Telegram Bot настройки
-    bot_token: str = ""
+    bot_token: str = "yout token here"
 
     # Generation API настройки
     generation_api_url: str = "http://localhost:8002"
@@ -21,4 +21,3 @@ class Settings(BaseSettings):
 
 # Создаем экземпляр настроек
 settings = Settings()
-

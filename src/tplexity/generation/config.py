@@ -1,5 +1,5 @@
 from typing import Literal
-from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """Настройки generation микросервиса из .env файла"""
 
     # LLM настройки
-    llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] = "chatgpt"
+    llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] = "qwen"
 
     # Retriever API настройки
     retriever_api_url: str = "http://localhost:8000"

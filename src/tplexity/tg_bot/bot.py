@@ -5,16 +5,17 @@ Telegram бот с интеграцией Generation API микросервис�
 
 import asyncio
 import logging
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, BotCommand
-from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
+
+from telegram import BotCommand, KeyboardButton, ReplyKeyboardMarkup, Update
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 try:
-    from .service_client import create_service_client, GenerationClient
     from .config import settings
+    from .service_client import GenerationClient, create_service_client
 except ImportError:
     # Для прямого запуска через python bot.py
-    from service_client import create_service_client, GenerationClient
     from config import settings
+    from service_client import GenerationClient, create_service_client
 
 # Настройка логирования
 logging.basicConfig(
@@ -32,10 +33,7 @@ def get_keyboard():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик команды /start."""
-    await update.message.reply_text(
-        "start message",
-        reply_markup=get_keyboard()
-    )
+    await update.message.reply_text("start message", reply_markup=get_keyboard())
 
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -45,38 +43,33 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Если пользователь нажал кнопку "Выбор модели"
     if user_message == "Выбор модели":
-        await update.message.reply_text(
-            "Извините выбор модели пока не работает",
-            reply_markup=get_keyboard()
-        )
+        await update.message.reply_text("Извините выбор модели пока не работает", reply_markup=get_keyboard())
         return
-    
+
     # Получаем клиент сервиса из контекста приложения
-    generation_client: GenerationClient = context.bot_data.get('generation_client')
-    
+    generation_client: GenerationClient = context.bot_data.get("generation_client")
+
     if not generation_client:
         await update.message.reply_text(
-            "Ошибка: сервис генерации недоступен. Пожалуйста, попробуйте позже.",
-            reply_markup=get_keyboard()
+            "Ошибка: сервис генерации недоступен. Пожалуйста, попробуйте позже.", reply_markup=get_keyboard()
         )
         logger.error("Generation client not found in bot_data")
         return
-    
+
     # Показываем индикатор печати
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    
+
     try:
         # Отправляем запрос в Generation API
         response_text = await generation_client.send_message(user_message)
-        
+
         # Отправляем ответ пользователю с клавиатурой
         await update.message.reply_text(response_text, reply_markup=get_keyboard())
-        
+
     except Exception as e:
         logger.error(f"Ошибка при обработке сообщения: {e}", exc_info=True)
         await update.message.reply_text(
-            f"Произошла ошибка при обработке вашего сообщения: {str(e)}",
-            reply_markup=get_keyboard()
+            f"Произошла ошибка при обработке вашего сообщения: {str(e)}", reply_markup=get_keyboard()
         )
 
 
@@ -85,7 +78,7 @@ async def main() -> None:
     # Получаем токен из настроек
     bot_token = settings.bot_token
 
-    if not bot_token or bot_token == "your_bot_token_here":
+    if not bot_token:
         logger.error("❌ BOT_TOKEN не установлен в .env файле!")
         logger.error("Пожалуйста, установите токен бота в файле .env")
         return
@@ -104,13 +97,13 @@ async def main() -> None:
 
     # Создаем приложение
     application = Application.builder().token(bot_token).build()
-    
+
     # Сохраняем клиент Generation API в bot_data для доступа из обработчиков
-    application.bot_data['generation_client'] = generation_client
+    application.bot_data["generation_client"] = generation_client
 
     # Регистрируем обработчик команды /start
     application.add_handler(CommandHandler("start", start))
-    
+
     # Регистрируем обработчик для всех текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
@@ -120,13 +113,13 @@ async def main() -> None:
         async with application:
             await application.initialize()
             await application.start()
-            
+
             # Очищаем команды меню и устанавливаем только /start
             commands = [
                 BotCommand("start", "Запустить бота"),
             ]
             await application.bot.set_my_commands(commands)
-            
+
             await application.updater.start_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
             # Ожидаем бесконечно, пока бот работает
             try:
@@ -147,16 +140,16 @@ def register_handlers(application: Application) -> None:
     """
     Регистрирует обработчики для Telegram бота.
     Используется при запуске через FastAPI.
-    
+
     Args:
         application: Экземпляр Telegram Application
     """
     # Регистрируем обработчик команды /start
     application.add_handler(CommandHandler("start", start))
-    
+
     # Регистрируем обработчик для всех текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
-    
+
     logger.info("✅ Обработчики Telegram бота зарегистрированы")
 
 
@@ -164,23 +157,23 @@ async def start_polling(application: Application) -> None:
     """
     Запускает polling для Telegram бота.
     Используется при запуске через FastAPI.
-    
+
     Args:
         application: Экземпляр Telegram Application
     """
     try:
         await application.initialize()
         await application.start()
-        
+
         # Устанавливаем команды меню
         commands = [
             BotCommand("start", "Запустить бота"),
         ]
         await application.bot.set_my_commands(commands)
-        
+
         await application.updater.start_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
         logger.info("✅ Polling запущен")
-        
+
         # Ожидаем бесконечно, пока бот работает
         while True:
             await asyncio.sleep(1)
@@ -195,8 +188,8 @@ async def start_polling(application: Application) -> None:
             await application.updater.stop()
             await application.stop()
             await application.shutdown()
-        except:
-            pass
+        except Exception as e:
+            print(e)
 
 
 if __name__ == "__main__":

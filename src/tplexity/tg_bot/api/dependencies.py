@@ -1,10 +1,11 @@
 """Зависимости для Telegram Bot API"""
 
 import logging
+
 from telegram.ext import Application
 
-from tplexity.tg_bot.service_client import create_service_client, GenerationClient
 from tplexity.tg_bot.config import settings
+from tplexity.tg_bot.service_client import create_service_client
 
 logger = logging.getLogger(__name__)
 
@@ -15,18 +16,18 @@ _bot_app_instance: Application | None = None
 def get_bot_app() -> Application:
     """
     Получить экземпляр Telegram Application (singleton)
-    
+
     Returns:
         Application: Экземпляр Telegram Application
     """
     global _bot_app_instance
-    
+
     if _bot_app_instance is None:
         bot_token = settings.bot_token
-        
-        if not bot_token or bot_token == "your_bot_token_here":
+
+        if not bot_token:
             raise ValueError("BOT_TOKEN не установлен в .env файле")
-        
+
         # Создаем клиент Generation API
         try:
             generation_client = create_service_client()
@@ -34,20 +35,19 @@ def get_bot_app() -> Application:
         except ValueError as e:
             logger.error(f"❌ Ошибка создания клиента Generation API: {e}")
             raise ValueError(f"Ошибка создания клиента Generation API: {e}") from e
-        
+
         # Создаем приложение Telegram
         application = Application.builder().token(bot_token).build()
-        
+
         # Сохраняем клиент Generation API в bot_data
-        application.bot_data['generation_client'] = generation_client
-        
+        application.bot_data["generation_client"] = generation_client
+
         # Импортируем и регистрируем обработчики
         from tplexity.tg_bot.bot import register_handlers
-        
+
         register_handlers(application)
-        
+
         _bot_app_instance = application
         logger.info("✅ Telegram Bot Application создан")
-    
-    return _bot_app_instance
 
+    return _bot_app_instance
