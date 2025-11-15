@@ -1,20 +1,12 @@
 """Зависимости для Telegram Bot API"""
 
 import logging
-import os
-from pathlib import Path
-
-from dotenv import load_dotenv
 from telegram.ext import Application
 
 from tplexity.tg_bot.service_client import create_service_client, GenerationClient
+from tplexity.tg_bot.config import settings
 
 logger = logging.getLogger(__name__)
-
-# Загружаем переменные окружения
-project_root = Path(__file__).parent.parent
-env_path = project_root / ".env"
-load_dotenv(env_path)
 
 # Singleton для Application
 _bot_app_instance: Application | None = None
@@ -30,7 +22,7 @@ def get_bot_app() -> Application:
     global _bot_app_instance
     
     if _bot_app_instance is None:
-        bot_token = os.getenv("BOT_TOKEN")
+        bot_token = settings.bot_token
         
         if not bot_token or bot_token == "your_bot_token_here":
             raise ValueError("BOT_TOKEN не установлен в .env файле")

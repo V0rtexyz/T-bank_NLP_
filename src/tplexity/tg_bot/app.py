@@ -4,21 +4,13 @@ FastAPI приложение для Telegram Bot микросервиса.
 """
 
 import logging
-import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from tplexity.tg_bot.api import router as tg_bot_router
-
-# Загружаем переменные окружения
-project_root = Path(__file__).parent
-env_path = project_root / ".env"
-load_dotenv(env_path)
 
 # Настройка логирования
 logging.basicConfig(

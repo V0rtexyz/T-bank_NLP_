@@ -2,10 +2,11 @@
 Клиент для взаимодействия с Generation API (FastAPI микросервис).
 """
 
-import os
 import logging
 import httpx
 from typing import Optional
+
+from tplexity.tg_bot.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -121,19 +122,15 @@ class GenerationClient:
 
 def create_service_client() -> GenerationClient:
     """
-    Создает клиент Generation API из переменных окружения.
+    Создает клиент Generation API из настроек.
     
     Returns:
         Настроенный клиент Generation API
         
     Raises:
-        ValueError: Если не указаны необходимые переменные окружения
+        ValueError: Если не указаны необходимые настройки
     """
-    base_url = os.getenv("GENERATION_API_URL")
-    
-    if not base_url:
+    if not settings.generation_api_url or settings.generation_api_url == "your_generation_api_url_here":
         raise ValueError("GENERATION_API_URL не установлен в .env файле")
     
-    timeout = float(os.getenv("GENERATION_API_TIMEOUT", "60.0"))
-    
-    return GenerationClient(base_url=base_url, timeout=timeout)
+    return GenerationClient(base_url=settings.generation_api_url, timeout=settings.generation_api_timeout)

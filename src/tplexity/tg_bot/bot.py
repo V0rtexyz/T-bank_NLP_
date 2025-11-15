@@ -3,24 +3,18 @@ Telegram бот с интеграцией Generation API микросервис�
 Отправляет сообщения пользователя в Generation API (FastAPI) и возвращает ответ.
 """
 
-import os
 import asyncio
 import logging
-from pathlib import Path
-from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, BotCommand
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 
 try:
     from .service_client import create_service_client, GenerationClient
+    from .config import settings
 except ImportError:
     # Для прямого запуска через python bot.py
     from service_client import create_service_client, GenerationClient
-
-# Загружаем переменные окружения из .env (из папки tg_bot)
-project_root = Path(__file__).parent
-env_path = project_root / ".env"
-load_dotenv(env_path)
+    from config import settings
 
 # Настройка логирования
 logging.basicConfig(
@@ -88,8 +82,8 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def main() -> None:
     """Запуск бота."""
-    # Получаем токен из переменных окружения
-    bot_token = os.getenv("BOT_TOKEN")
+    # Получаем токен из настроек
+    bot_token = settings.bot_token
 
     if not bot_token or bot_token == "your_bot_token_here":
         logger.error("❌ BOT_TOKEN не установлен в .env файле!")
