@@ -5,7 +5,6 @@
 
 import json
 import logging
-from typing import Any
 
 import redis.asyncio as aioredis
 
@@ -35,7 +34,9 @@ class MemoryService:
                 max_connections=10,
             )
             self.redis_client = aioredis.Redis(connection_pool=self._connection_pool)
-            logger.info(f"✅ [memory_service] Redis клиент инициализирован: {settings.redis_host}:{settings.redis_port}")
+            logger.info(
+                f"✅ [memory_service] Redis клиент инициализирован: {settings.redis_host}:{settings.redis_port}"
+            )
 
     def _get_session_key(self, session_id: str) -> str:
         """Формирует ключ для сессии в Redis"""
@@ -103,10 +104,10 @@ class MemoryService:
                 if history and history[0].get("role") == "system":
                     system_prompt = history[0]
                     # Оставляем системный промпт + последние max_history_messages сообщений
-                    history = [system_prompt] + history[-(settings.max_history_messages):]
+                    history = [system_prompt] + history[-(settings.max_history_messages) :]
                 else:
                     # Если нет системного промпта, просто берем последние max_history_messages
-                    history = history[-(settings.max_history_messages):]
+                    history = history[-(settings.max_history_messages) :]
 
             # Сохраняем историю в Redis с TTL
             history_json = json.dumps(history, ensure_ascii=False)
@@ -116,7 +117,9 @@ class MemoryService:
                 history_json,
             )
 
-            logger.debug(f"💾 [memory_service] Сообщение добавлено в историю сессии {session_id}: {role} ({len(content)} символов)")
+            logger.debug(
+                f"💾 [memory_service] Сообщение добавлено в историю сессии {session_id}: {role} ({len(content)} символов)"
+            )
 
         except Exception as e:
             logger.error(f"❌ [memory_service] Ошибка при добавлении сообщения для сессии {session_id}: {e}")
@@ -144,9 +147,9 @@ class MemoryService:
             if len(history) > settings.max_history_messages + 1:
                 if history and history[0].get("role") == "system":
                     system_prompt = history[0]
-                    history = [system_prompt] + history[-(settings.max_history_messages):]
+                    history = [system_prompt] + history[-(settings.max_history_messages) :]
                 else:
-                    history = history[-(settings.max_history_messages):]
+                    history = history[-(settings.max_history_messages) :]
 
             # Сохраняем историю в Redis с TTL
             history_json = json.dumps(history, ensure_ascii=False)
@@ -210,4 +213,3 @@ class MemoryService:
             await self._connection_pool.disconnect()
             self._connection_pool = None
             logger.info("🔌 [memory_service] Соединение с Redis закрыто")
-

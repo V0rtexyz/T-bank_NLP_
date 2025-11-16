@@ -1,5 +1,4 @@
 import logging
-from typing import Literal
 
 from openai import AsyncOpenAI
 
@@ -95,12 +94,12 @@ class LLMClient:
             raise
 
 
-def get_llm(provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"]) -> LLMClient:
+def get_llm(provider: str) -> LLMClient:
     """
     Получить LLM клиент для указанного провайдера (singleton)
 
     Args:
-        provider (Literal["qwen", "yandexgpt", "chatgpt", "gemini"]): Провайдер LLM
+        provider (str): Провайдер LLM
 
     Returns:
         LLMClient: Экземпляр LLM клиента для указанного провайдера
@@ -133,13 +132,15 @@ def get_llm(provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"]) -> LLMC
             base_url=None,
             timeout=settings.timeout,
         )
-    elif provider == "gemini":
+    elif provider == "deepseek":
         client = LLMClient(
-            model=settings.gemini_model,
-            api_key=settings.gemini_api_key,
-            base_url=settings.gemini_base_url,
+            model=settings.deepseek_model,
+            api_key=settings.deepseek_api_key,
+            base_url=settings.deepseek_base_url,
             timeout=settings.timeout,
         )
+    else:
+        raise ValueError(f"Неизвестный провайдер LLM: {provider}")
 
     _llm_instances[provider] = client
     return client

@@ -27,16 +27,16 @@ class Settings(BaseSettings):
     chatgpt_model: str = "gpt-4o-mini"
     chatgpt_api_key: str = ""
 
-    # Gemini настройки
-    gemini_model: str = "gemini-2.5-flash"
-    gemini_api_key: str = ""
-    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    # DeepSeek настройки
+    deepseek_model: str = "deepseek-chat"
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
 
     # Список доступных моделей для выбора
     # Если не указано в .env, по умолчанию используется только qwen
     available_models: str = "qwen"
 
-    @field_validator('available_models', mode='after')
+    @field_validator("available_models", mode="after")
     @classmethod
     def parse_available_models(cls, v: str) -> list[str]:
         """Парсит строку с моделями в список"""

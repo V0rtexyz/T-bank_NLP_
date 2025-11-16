@@ -1,18 +1,13 @@
 import logging
-from typing import Literal
 
 import httpx
 
 from tplexity.generation.config import settings
 from tplexity.generation.memory_service import MemoryService
+from tplexity.generation.prompts import SYSTEM_PROMPT, USER_PROMPT
 from tplexity.llm_client import get_llm
 
 logger = logging.getLogger(__name__)
-
-SYSTEM_PROMPT = """
-Ты - полезный AI-ассистент. Отвечай на вопросы пользователя на основе предоставленного контекста.
-Если в контексте нет информации для ответа, честно скажи об этом.
-"""
 
 
 class RetrieverClient:
@@ -89,7 +84,7 @@ class GenerationService:
 
     def __init__(
         self,
-        llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None = None,
+        llm_provider: str | None = None,
         retriever_url: str | None = None,
         memory_service: MemoryService | None = None,
     ):
@@ -97,7 +92,7 @@ class GenerationService:
         Инициализация сервиса генерации
 
         Args:
-            llm_provider (Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None): Провайдер LLM
+            llm_provider (str | None): Провайдер LLM (если None, берется из config)
             retriever_url (str | None): URL Retriever API (если None, берется из config)
             memory_service (MemoryService | None): Сервис для работы с памятью диалогов
         """
@@ -134,15 +129,8 @@ class GenerationService:
 
         context = "\n\n".join(context_parts)
 
-        # Формируем финальный промпт
-        prompt = f"""Контекст:
-{context}
-
-Вопрос пользователя: {query}
-
-Ответь на вопрос пользователя на основе предоставленного контекста. Если в контексте нет информации для ответа, честно скажи об этом."""
-
-        return prompt
+        # Используем промпт из prompts.py
+        return USER_PROMPT.format(context=context, query=query)
 
     async def _call_llm(
         self, messages: list[dict[str, str]], temperature: float | None = None, max_tokens: int | None = None
@@ -168,7 +156,7 @@ class GenerationService:
         use_rerank: bool | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-        llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None = None,
+        llm_provider: str | None = None,
         session_id: str | None = None,
     ) -> tuple[str, list[str], list[dict | None]]:
         """
@@ -198,9 +186,13 @@ class GenerationService:
         # Выбираем провайдер LLM (если указан в запросе, используем его, иначе используем из self)
         provider = llm_provider or self.llm_provider
         if llm_provider:
-            logger.info(f"🔄 [generation_service] Получен запрос с llm_provider={llm_provider}, будет использован провайдер: {provider}")
+            logger.info(
+                f"🔄 [generation_service] Получен запрос с llm_provider={llm_provider}, будет использован провайдер: {provider}"
+            )
         else:
-            logger.info(f"🔄 [generation_service] Запрос без указания llm_provider, используется провайдер по умолчанию: {provider}")
+            logger.info(
+                f"🔄 [generation_service] Запрос без указания llm_provider, используется провайдер по умолчанию: {provider}"
+            )
         logger.info(f"🔄 [generation_service] Начало генерации для запроса: {query[:50]}...")
 
         # Шаг 1: Поиск релевантных документов через Retriever API
@@ -252,13 +244,19 @@ class GenerationService:
         if llm_provider:
             # Используем запрошенный провайдер (даже если он совпадает с дефолтным)
             llm_client = get_llm(llm_provider)
-            logger.info(f"✅ [generation_service] Использование запрошенного LLM провайдера: {llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})")
+            logger.info(
+                f"✅ [generation_service] Использование запрошенного LLM провайдера: {llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})"
+            )
         else:
             # Используем провайдер по умолчанию
             llm_client = self.llm_client
-            logger.info(f"✅ [generation_service] Использование провайдера по умолчанию: {self.llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})")
+            logger.info(
+                f"✅ [generation_service] Использование провайдера по умолчанию: {self.llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})"
+            )
 
-        logger.info(f"🔄 [generation_service] Генерация ответа через LLM провайдер={llm_provider or self.llm_provider}, модель={llm_client.model}")
+        logger.info(
+            f"🔄 [generation_service] Генерация ответа через LLM провайдер={llm_provider or self.llm_provider}, модель={llm_client.model}"
+        )
         answer = await llm_client.generate(messages, temperature=temperature, max_tokens=max_tokens)
         logger.info("✅ [generation_service] Ответ успешно сгенерирован")
 
