@@ -52,16 +52,47 @@ def get_models_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 
+def extract_channel_name_from_link(link: str) -> str:
+    """
+    Извлекает название канала из Telegram ссылки.
+    
+    Args:
+        link: Telegram ссылка (например, https://t.me/selfinvestor/23422)
+    
+    Returns:
+        str: Название канала (например, selfinvestor)
+    """
+    import re
+    
+    # Паттерн для обычного формата: https://t.me/channel_name/message_id
+    # Извлекаем название канала между t.me/ и следующим /
+    match = re.search(r"https?://t\.me/([^/]+)", link)
+    if match:
+        channel_name = match.group(1)
+        # Убираем @ если есть
+        return channel_name.lstrip("@")
+    
+    # Если не удалось извлечь через regex, пробуем через split
+    parts = link.rstrip("/").split("/")
+    if len(parts) >= 4:
+        # Формат: https://t.me/channel_name/message_id
+        # parts = ['https:', '', 't.me', 'channel_name', 'message_id']
+        channel_name = parts[-2]  # Предпоследняя часть (название канала)
+        return channel_name.lstrip("@")
+    
+    return "канал"  # Fallback
+
+
 def format_sources(sources: list[dict], max_sources: int = 5) -> str:
     """
-    Форматирует источники как Telegram ссылки.
+    Форматирует источники как Telegram ссылки с названием канала вместо полной ссылки.
 
     Args:
         sources: Список источников с метаданными
         max_sources: Максимальное количество источников для отображения
 
     Returns:
-        str: Отформатированная строка с источниками
+        str: Отформатированная строка с источниками в формате markdown
     """
     if not sources:
         logger.warning("⚠️ [tg_bot] format_sources: sources пуст")
@@ -115,8 +146,13 @@ def format_sources(sources: list[dict], max_sources: int = 5) -> str:
             logger.warning(f"⚠️ [tg_bot] Недостаточно данных для источника {idx}: metadata={metadata}")
             continue
 
-        # Форматируем как кликабельную ссылку в Telegram markdown
-        source_links.append(f"топ-{idx} источник: {link}")
+        # Извлекаем название канала из ссылки
+        channel_name = extract_channel_name_from_link(link)
+        
+        # Форматируем как кликабельную ссылку в Telegram markdown: [текст](ссылка)
+        # Экранируем специальные символы в ссылке для markdown
+        escaped_link = link.replace("(", "\\(").replace(")", "\\)")
+        source_links.append(f"топ-{idx} источник: [{channel_name}]({escaped_link})")
 
     if not source_links:
         logger.warning("⚠️ [tg_bot] format_sources: не удалось сформировать ни одной ссылки")
@@ -200,12 +236,18 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Объединяем ответ и источники
         if sources_text:
             response_text = f"{answer}\n\n{sources_text}"
+            # Используем Markdown для форматирования ссылок и отключаем предпросмотр
+            await update.message.reply_text(
+                response_text, 
+                reply_markup=get_keyboard(),
+                parse_mode="Markdown",
+                disable_web_page_preview=True
+            )
         else:
             response_text = answer
             logger.warning("⚠️ [tg_bot] Источники не были добавлены к ответу")
-
-        # Отправляем ответ пользователю с клавиатурой
-        await update.message.reply_text(response_text, reply_markup=get_keyboard())
+            # Отправляем ответ без markdown, если нет источников
+            await update.message.reply_text(response_text, reply_markup=get_keyboard())
 
     except Exception as e:
         logger.error(f"Ошибка при обработке сообщения: {e}", exc_info=True)
