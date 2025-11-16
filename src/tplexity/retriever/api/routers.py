@@ -79,6 +79,7 @@ async def search(
             top_k=request.top_k,
             top_n=request.top_n,
             use_rerank=request.use_rerank,
+            messages=request.messages,
         )
 
         # Преобразуем результаты в формат схемы

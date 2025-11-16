@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Импортируем настройки из llm_client для получения списка доступных моделей
 try:
@@ -16,12 +16,12 @@ class Settings(BaseSettings):
 
     # Telegram Bot настройки
     bot_token: str = Field(default="")
-    
-    @field_validator('bot_token', mode='before')
+
+    @field_validator("bot_token", mode="before")
     @classmethod
     def parse_bot_token(cls, v):
         # Если передана пустая строка или None, используем дефолтное значение
-        if v == '' or v is None:
+        if v == "" or v is None:
             return ""
         return v
 
@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     @property
     def available_models(self) -> list[str]:
         """Получает список доступных моделей из llm_client настроек"""
-        if llm_settings and hasattr(llm_settings, 'available_models'):
+        if llm_settings and hasattr(llm_settings, "available_models"):
             return llm_settings.available_models
         # Fallback если llm_settings недоступен
         return ["qwen"]

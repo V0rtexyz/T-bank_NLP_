@@ -1,17 +1,31 @@
 import asyncio
 import logging
-import traceback
 
+from tplexity.llm_client import get_llm
 from tplexity.retriever.config import settings
 from tplexity.retriever.reranker import get_reranker
 from tplexity.retriever.vector_search import VectorSearch
 
 logger = logging.getLogger(__name__)
 
+QUERY_REFORMULATION_PROMPT = """
+Переформулируй следующий поисковый запрос так, чтобы он был более эффективным для поиска релевантной информации в базе знаний.
+Сохрани смысл и ключевые термины, но сделай запрос более четким и структурированным для поиска.
+Переформулированный запрос должен быть на русском языке.
+Не давай пояснений или комментариев, только текст запроса.
+
+{conversation_context}
+
+Исходный запрос: {query}
+
+Переформулированный запрос:
+"""
+
 
 class RetrieverService:
     """Класс для гибридного поиска с использованием Qdrant
 
+    0. Query Reformulation: Переформулирование запроса через LLM
     1. Prefetch
     - Sparse Embeddings: BM25 с лемматизацией
     - Dense Embeddings: ai-forever/FRIDA
@@ -39,7 +53,6 @@ class RetrieverService:
         """
         logger.info("🔄 [retriever_service] Инициализация гибридного поисковика")
 
-        # Единая точка чтения всех параметров из config
         self._init_config_params(
             collection_name=collection_name,
             host=host,
@@ -48,7 +61,6 @@ class RetrieverService:
             timeout=timeout,
         )
 
-        # Передаем все параметры в VectorSearch
         self.vector_search = VectorSearch(
             collection_name=self.collection_name,
             host=self.host,
@@ -58,7 +70,27 @@ class RetrieverService:
             prefetch_ratio=self.prefetch_ratio,
         )
 
+        # Инициализация reranker
         self.reranker = get_reranker()
+
+        # Инициализация query reformulation (опционально)
+        self.enable_query_reformulation = settings.enable_query_reformulation
+        if self.enable_query_reformulation:
+            provider = settings.query_reformulation_llm_provider
+            try:
+                self.llm_client = get_llm(provider)  # type: ignore
+                logger.info(
+                    f"✅ [retriever_service] LLM клиент для переформулирования инициализирован: provider={provider}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ [retriever_service] Не удалось инициализировать LLM клиент для переформулирования: {e}. "
+                    f"Переформулирование будет отключено."
+                )
+                self.enable_query_reformulation = False
+        else:
+            self.llm_client = None
+
         logger.info(
             f"✅ [retriever_service] Гибридный поисковик инициализирован: "
             f"top_k={self.top_k}, top_n={self.top_n}, prefetch_ratio={self.prefetch_ratio}"
@@ -121,15 +153,67 @@ class RetrieverService:
             logger.error(f"❌ [retriever_service] Ошибка при добавлении документов в Qdrant: {e}")
             raise
 
+    async def _reformulate_query(self, query: str, messages: list[dict[str, str]] | None = None) -> str:
+        """
+        Переформулировать запрос для улучшения качества поиска
+
+        Args:
+            query (str): Исходный поисковый запрос
+            messages (list[dict[str, str]] | None): История диалога для контекста
+
+        Returns:
+            str: Переформулированный запрос
+        """
+        try:
+            logger.debug(f"🔄 [retriever_service] Переформулирование запроса: {query[:50]}...")
+
+            conversation_context = ""
+            if messages:
+                recent_messages = messages[-6:] if len(messages) > 6 else messages
+                context_parts = []
+                for message in recent_messages:
+                    role = message.get("role", "")
+                    content = message.get("content", "")
+                    if role == "user":
+                        context_parts.append(f"Пользователь: {content}")
+                    elif role == "assistant":
+                        context_parts.append(f"Ассистент: {content}")
+
+                if context_parts:
+                    conversation_context = "Контекст предыдущего диалога:\n" + "\n".join(context_parts) + "\n\n"
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": QUERY_REFORMULATION_PROMPT.format(
+                        conversation_context=conversation_context,
+                        query=query,
+                    ),
+                }
+            ]
+            reformulated_query = await self.llm_client.generate(messages, temperature=0.3, max_tokens=200)
+            reformulated_query = reformulated_query.strip()
+
+            logger.info(
+                f"✅ [retriever_service] Запрос переформулирован: '{query[:50]}...' -> '{reformulated_query[:50]}...'"
+            )
+            return reformulated_query
+        except Exception as e:
+            logger.warning(
+                f"⚠️ [retriever_service] Ошибка при переформулировании запроса: {e}. Используется оригинальный запрос."
+            )
+            return query
+
     async def search(
         self,
         query: str,
         top_k: int | None = None,
         top_n: int | None = None,
         use_rerank: bool = True,
+        messages: list[dict[str, str]] | None = None,
     ) -> list[tuple[str, float, str, dict | None]]:
         """
-        Гибридный поиск: BM25 + Embeddings → RRF (в Qdrant) → Rerank
+        Гибридный поиск: Query Reformulation → BM25 + Embeddings → RRF (в Qdrant) → Rerank
 
         Args:
             query (str): Поисковый запрос
@@ -157,8 +241,14 @@ class RetrieverService:
 
         logger.info(f"🔍 [retriever_service] Начало поиска для запроса: {query[:50]}...")
 
+        # Шаг 0: Переформулирование запроса
+        if self.enable_query_reformulation and self.llm_client:
+            search_query = await self._reformulate_query(query, messages)
+        else:
+            search_query = query
+
         logger.debug(f"🔄 [retriever_service] Выполнение гибридного поиска, top_k: {top_k}")
-        hybrid_results = await self.vector_search.search(query, top_k=top_k, search_type="hybrid")
+        hybrid_results = await self.vector_search.search(search_query, top_k=top_k, search_type="hybrid")
         logger.info(f"✅ [retriever_service] Гибридный поиск завершен, найдено результатов: {len(hybrid_results)}")
 
         if not hybrid_results:
@@ -177,10 +267,11 @@ class RetrieverService:
 
         # Шаг 2: Reranking (опционально)
         if use_rerank and hybrid_results:
-            logger.debug(f"🔄 [retriever_service] Выполнение reranking для топ-{top_k} результатов, вернем топ-{top_n}")
+            logger.info(f"🔄 [retriever_service] Выполнение reranking для топ-{top_k} результатов, вернем топ-{top_n}")
             rerank_doc_ids = [doc_id for doc_id, _, _, _ in hybrid_results[:top_k]]
             rerank_documents = [doc_id_to_text.get(doc_id, "") for doc_id in rerank_doc_ids]
 
+            # Reranking - используем оригинальный запрос для reranking
             # Reranking - возвращаем top_n результатов (асинхронно)
             rerank_results = await asyncio.to_thread(self.reranker.rerank, query, rerank_documents, top_n=top_n)
             logger.info(f"✅ [retriever_service] Reranking завершен, возвращено результатов: {len(rerank_results)}")

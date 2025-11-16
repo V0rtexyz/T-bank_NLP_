@@ -1,24 +1,20 @@
 import logging
-from typing import Literal
+from datetime import datetime
 
 import httpx
 
 from tplexity.generation.config import settings
 from tplexity.generation.memory_service import MemoryService
+from tplexity.generation.prompts import SYSTEM_PROMPT, USER_PROMPT
 from tplexity.llm_client import get_llm
 
 logger = logging.getLogger(__name__)
-
-SYSTEM_PROMPT = """
-Ты - полезный AI-ассистент. Отвечай на вопросы пользователя на основе предоставленного контекста.
-Если в контексте нет информации для ответа, честно скажи об этом.
-"""
 
 
 class RetrieverClient:
     """Клиент для взаимодействия с Retriever API"""
 
-    def __init__(self, base_url: str, timeout: float = 30.0):
+    def __init__(self, base_url: str, timeout: float = 60.0):
         """
         Инициализация клиента
 
@@ -31,7 +27,12 @@ class RetrieverClient:
         logger.info(f"🔄 [retriever_client] Инициализирован клиент для {self.base_url}")
 
     async def search(
-        self, query: str, top_k: int | None = None, top_n: int | None = None, use_rerank: bool = True
+        self,
+        query: str,
+        top_k: int | None = None,
+        top_n: int | None = None,
+        use_rerank: bool = True,
+        messages: list[dict[str, str]] | None = None,
     ) -> list[tuple[str, float, str, dict | None]]:
         """
         Поиск релевантных документов
@@ -41,6 +42,7 @@ class RetrieverClient:
             top_k: Количество документов до реранка
             top_n: Количество документов после реранка
             use_rerank: Использовать ли reranking
+            messages: История диалога для переформулирования запроса
 
         Returns:
             list[tuple[str, float, str, dict | None]]: Список кортежей (doc_id, score, text, metadata)
@@ -54,9 +56,12 @@ class RetrieverClient:
             payload["top_k"] = top_k
         if top_n is not None:
             payload["top_n"] = top_n
+        if messages is not None:
+            payload["messages"] = messages
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            timeout_config = httpx.Timeout(self.timeout)
+            async with httpx.AsyncClient(timeout=timeout_config) as client:
                 response = await client.post(f"{self.base_url}/retriever/search", json=payload)
                 response.raise_for_status()
 
@@ -89,7 +94,7 @@ class GenerationService:
 
     def __init__(
         self,
-        llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None = None,
+        llm_provider: str | None = None,
         retriever_url: str | None = None,
         memory_service: MemoryService | None = None,
     ):
@@ -97,7 +102,7 @@ class GenerationService:
         Инициализация сервиса генерации
 
         Args:
-            llm_provider (Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None): Провайдер LLM
+            llm_provider (str | None): Провайдер LLM (если None, берется из config)
             retriever_url (str | None): URL Retriever API (если None, берется из config)
             memory_service (MemoryService | None): Сервис для работы с памятью диалогов
         """
@@ -134,15 +139,9 @@ class GenerationService:
 
         context = "\n\n".join(context_parts)
 
-        # Формируем финальный промпт
-        prompt = f"""Контекст:
-{context}
-
-Вопрос пользователя: {query}
-
-Ответь на вопрос пользователя на основе предоставленного контекста. Если в контексте нет информации для ответа, честно скажи об этом."""
-
-        return prompt
+        # Получаем текущее время и используем промпт из prompts.py
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return USER_PROMPT.format(context=context, query=query, current_time=current_time)
 
     async def _call_llm(
         self, messages: list[dict[str, str]], temperature: float | None = None, max_tokens: int | None = None
@@ -161,14 +160,14 @@ class GenerationService:
         logger.debug("🔄 [generation_service] Отправка запроса к LLM")
         return await self.llm_client.generate(messages, temperature=temperature, max_tokens=max_tokens)
 
-    async def generate(
+    async def generate(  # noqa: C901
         self,
         query: str,
         top_k: int | None = None,
         use_rerank: bool | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-        llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None = None,
+        llm_provider: str | None = None,
         session_id: str | None = None,
     ) -> tuple[str, list[str], list[dict | None]]:
         """
@@ -198,15 +197,26 @@ class GenerationService:
         # Выбираем провайдер LLM (если указан в запросе, используем его, иначе используем из self)
         provider = llm_provider or self.llm_provider
         if llm_provider:
-            logger.info(f"🔄 [generation_service] Получен запрос с llm_provider={llm_provider}, будет использован провайдер: {provider}")
+            logger.info(
+                f"🔄 [generation_service] Получен запрос с llm_provider={llm_provider}, будет использован провайдер: {provider}"
+            )
         else:
-            logger.info(f"🔄 [generation_service] Запрос без указания llm_provider, используется провайдер по умолчанию: {provider}")
+            logger.info(
+                f"🔄 [generation_service] Запрос без указания llm_provider, используется провайдер по умолчанию: {provider}"
+            )
         logger.info(f"🔄 [generation_service] Начало генерации для запроса: {query[:50]}...")
+
+        # Получаем историю диалога для передачи в retriever (если указан session_id)
+        messages = None
+        if session_id:
+            history = await self.memory_service.get_history(session_id)
+            if history:
+                messages = [message for message in history if message.get("role") != "system"]
 
         # Шаг 1: Поиск релевантных документов через Retriever API
         logger.debug(f"🔍 [generation_service] Поиск релевантных документов, top_k={top_k}, use_rerank={use_rerank}")
         context_documents = await self.retriever_client.search(
-            query=query, top_k=top_k, top_n=top_k, use_rerank=use_rerank
+            query=query, top_k=top_k, top_n=top_k, use_rerank=use_rerank, messages=messages
         )
 
         if not context_documents:
@@ -252,13 +262,19 @@ class GenerationService:
         if llm_provider:
             # Используем запрошенный провайдер (даже если он совпадает с дефолтным)
             llm_client = get_llm(llm_provider)
-            logger.info(f"✅ [generation_service] Использование запрошенного LLM провайдера: {llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})")
+            logger.info(
+                f"✅ [generation_service] Использование запрошенного LLM провайдера: {llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})"
+            )
         else:
             # Используем провайдер по умолчанию
             llm_client = self.llm_client
-            logger.info(f"✅ [generation_service] Использование провайдера по умолчанию: {self.llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})")
+            logger.info(
+                f"✅ [generation_service] Использование провайдера по умолчанию: {self.llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})"
+            )
 
-        logger.info(f"🔄 [generation_service] Генерация ответа через LLM провайдер={llm_provider or self.llm_provider}, модель={llm_client.model}")
+        logger.info(
+            f"🔄 [generation_service] Генерация ответа через LLM провайдер={llm_provider or self.llm_provider}, модель={llm_client.model}"
+        )
         answer = await llm_client.generate(messages, temperature=temperature, max_tokens=max_tokens)
         logger.info("✅ [generation_service] Ответ успешно сгенерирован")
 

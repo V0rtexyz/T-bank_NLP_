@@ -34,7 +34,7 @@ class GenerationClient:
             self._httpx_client = httpx.AsyncClient(timeout=timeout_config, headers={"Content-Type": "application/json"})
             logger.info("Generation client initialized")
 
-    async def send_message(
+    async def send_message(  # noqa: C901
         self,
         message_text: str,
         top_k: int | None = None,
@@ -82,7 +82,9 @@ class GenerationClient:
             payload["llm_provider"] = llm_provider
             logger.info(f"📤 [tg_bot.service_client] Отправка запроса с llm_provider={llm_provider}")
         else:
-            logger.info("📤 [tg_bot.service_client] Отправка запроса без указания llm_provider (будет использована модель по умолчанию)")
+            logger.info(
+                "📤 [tg_bot.service_client] Отправка запроса без указания llm_provider (будет использована модель по умолчанию)"
+            )
         if session_id is not None:
             payload["session_id"] = session_id
             logger.debug(f"📤 [tg_bot.service_client] Отправка запроса с session_id={session_id}")
@@ -103,7 +105,7 @@ class GenerationClient:
 
             # Извлекаем источники из FastAPI response
             sources = response_data.get("sources", [])
-            
+
             # Логируем структуру источников для отладки
             logger.info(f"📋 [tg_bot.service_client] Получено источников: {len(sources)}")
             if sources:

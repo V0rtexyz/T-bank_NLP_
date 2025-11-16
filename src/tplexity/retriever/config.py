@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     top_k: int = 20
     top_n: int = 10
 
+    # Query reformulation настройки
+    enable_query_reformulation: bool = True
+    query_reformulation_llm_provider: str = "qwen"
+
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).parent / ".env"),
         env_file_encoding="utf-8",

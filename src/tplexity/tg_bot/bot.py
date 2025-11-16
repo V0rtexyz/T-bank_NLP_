@@ -38,7 +38,7 @@ def get_models_keyboard():
     """Создает inline клавиатуру с доступными моделями."""
     available_models = settings.available_models
     keyboard = []
-    
+
     # Маппинг названий моделей для отображения
     model_names = {
         "qwen": "Qwen",
@@ -46,12 +46,12 @@ def get_models_keyboard():
         "chatgpt": "ChatGPT",
         "gemini": "Gemini",
     }
-    
+
     # Создаем кнопки для каждой модели
     for model in available_models:
         display_name = model_names.get(model, model.capitalize())
         keyboard.append([InlineKeyboardButton(display_name, callback_data=f"model_{model}")])
-    
+
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -69,15 +69,15 @@ def get_clear_history_confirmation_keyboard():
 def extract_channel_name_from_link(link: str) -> str:
     """
     Извлекает название канала из Telegram ссылки.
-    
+
     Args:
         link: Telegram ссылка (например, https://t.me/selfinvestor/23422)
-    
+
     Returns:
         str: Название канала (например, selfinvestor)
     """
     import re
-    
+
     # Паттерн для обычного формата: https://t.me/channel_name/message_id
     # Извлекаем название канала между t.me/ и следующим /
     match = re.search(r"https?://t\.me/([^/]+)", link)
@@ -85,7 +85,7 @@ def extract_channel_name_from_link(link: str) -> str:
         channel_name = match.group(1)
         # Убираем @ если есть
         return channel_name.lstrip("@")
-    
+
     # Если не удалось извлечь через regex, пробуем через split
     parts = link.rstrip("/").split("/")
     if len(parts) >= 4:
@@ -93,7 +93,7 @@ def extract_channel_name_from_link(link: str) -> str:
         # parts = ['https:', '', 't.me', 'channel_name', 'message_id']
         channel_name = parts[-2]  # Предпоследняя часть (название канала)
         return channel_name.lstrip("@")
-    
+
     return "канал"  # Fallback
 
 
@@ -120,33 +120,35 @@ def format_sources(sources: list[dict], max_sources: int = 5) -> str:
     source_links = []
     for idx, source in enumerate(top_sources, 1):
         logger.debug(f"📋 [tg_bot] format_sources: источник {idx}: {source}")
-        
+
         # Источник может быть словарем с полями "doc_id" и "metadata"
         metadata = source.get("metadata") or {}
-        
+
         # Логируем метаданные для отладки
         if idx == 1:
             logger.info(f"📋 [tg_bot] format_sources: метаданные первого источника: {metadata}")
-        
+
         # Извлекаем ссылку из метаданных (приоритет 1: готовая ссылка)
         link = metadata.get("link")
-        
+
         # Если нет готовой ссылки, пытаемся сформировать из channel_id и message_id
         if not link:
             channel_id = metadata.get("channel_id")
             message_id = metadata.get("message_id")
-            
+
             if channel_id and message_id:
                 # Формируем ссылку: https://t.me/c/{channel_id}/{message_id}
                 # Для приватных каналов используется формат с channel_id
                 link = f"https://t.me/c/{channel_id}/{message_id}"
-                logger.debug(f"📋 [tg_bot] format_sources: источник {idx} сформирован из channel_id и message_id: {link}")
+                logger.debug(
+                    f"📋 [tg_bot] format_sources: источник {idx} сформирован из channel_id и message_id: {link}"
+                )
             else:
                 # Пробуем старый формат (для обратной совместимости)
                 channel_name = metadata.get("channel_name")
                 original_id = metadata.get("original_id")
                 original_link = metadata.get("original_link")
-                
+
                 if original_link:
                     link = original_link
                     logger.debug(f"📋 [tg_bot] format_sources: источник {idx} использует original_link: {link}")
@@ -154,7 +156,7 @@ def format_sources(sources: list[dict], max_sources: int = 5) -> str:
                     clean_channel = channel_name.lstrip("@")
                     link = f"https://t.me/{clean_channel}/{original_id}"
                     logger.debug(f"📋 [tg_bot] format_sources: источник {idx} сформирован из channel_name: {link}")
-        
+
         if not link:
             # Если не удалось получить ссылку, пропускаем
             logger.warning(f"⚠️ [tg_bot] Недостаточно данных для источника {idx}: metadata={metadata}")
@@ -162,7 +164,7 @@ def format_sources(sources: list[dict], max_sources: int = 5) -> str:
 
         # Извлекаем название канала из ссылки
         channel_name = extract_channel_name_from_link(link)
-        
+
         # Форматируем как кликабельную ссылку в Telegram markdown: [текст](ссылка)
         # Экранируем специальные символы в ссылке для markdown
         escaped_link = link.replace("(", "\\(").replace(")", "\\)")
@@ -193,7 +195,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Получаем текущую выбранную модель
         user_data = context.user_data
         current_model = user_data.get("selected_model")
-        
+
         message_text = "Выберите модель для генерации ответов:"
         if current_model:
             model_names = {
@@ -204,7 +206,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             }
             current_name = model_names.get(current_model, current_model.capitalize())
             message_text += f"\n\nТекущая модель: {current_name}"
-        
+
         await update.message.reply_text(message_text, reply_markup=get_models_keyboard())
         return
 
@@ -229,7 +231,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Получаем выбранную модель из user_data
     user_data = context.user_data
     selected_model = user_data.get("selected_model")
-    
+
     # Логируем выбранную модель
     if selected_model:
         logger.info(f"📌 [tg_bot] Использование выбранной модели: {selected_model}")
@@ -256,18 +258,17 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         # Форматируем источники
         sources_text = format_sources(sources, max_sources=5)
-        
-        logger.info(f"📋 [tg_bot] Отформатированный текст источников: {sources_text[:100] if sources_text else 'пусто'}...")
+
+        logger.info(
+            f"📋 [tg_bot] Отформатированный текст источников: {sources_text[:100] if sources_text else 'пусто'}..."
+        )
 
         # Объединяем ответ и источники
         if sources_text:
             response_text = f"{answer}\n\n{sources_text}"
             # Используем Markdown для форматирования ссылок и отключаем предпросмотр
             await update.message.reply_text(
-                response_text, 
-                reply_markup=get_keyboard(),
-                parse_mode="Markdown",
-                disable_web_page_preview=True
+                response_text, reply_markup=get_keyboard(), parse_mode="Markdown", disable_web_page_preview=True
             )
         else:
             response_text = answer
@@ -285,17 +286,17 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик выбора модели через inline кнопки."""
     query = update.callback_query
-    
+
     # Отвечаем на callback query, чтобы убрать индикатор загрузки
     await query.answer()
-    
+
     # Извлекаем название модели из callback_data (формат: "model_qwen")
     if query.data and query.data.startswith("model_"):
         model = query.data.replace("model_", "")
-        
+
         # Сохраняем выбранную модель в user_data
         context.user_data["selected_model"] = model
-        
+
         # Маппинг названий моделей для отображения
         model_names = {
             "qwen": "Qwen",
@@ -303,11 +304,10 @@ async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "chatgpt": "ChatGPT",
             "gemini": "Gemini",
         }
-        
+
         display_name = model_names.get(model, model.capitalize())
         await query.edit_message_text(
-            f"✅ Модель {display_name} выбрана и будет использоваться для генерации ответов.",
-            reply_markup=None
+            f"✅ Модель {display_name} выбрана и будет использоваться для генерации ответов.", reply_markup=None
         )
         logger.info(f"Пользователь {update.effective_user.username} выбрал модель: {model}")
     else:
@@ -317,46 +317,36 @@ async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def clear_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик подтверждения очистки истории через inline кнопки."""
     query = update.callback_query
-    
+
     # Отвечаем на callback query
     await query.answer()
-    
+
     if query.data == "clear_history_yes":
         # Получаем клиент сервиса из контекста приложения
         generation_client: GenerationClient = context.bot_data.get("generation_client")
-        
+
         if not generation_client:
             await query.edit_message_text(
-                "Ошибка: сервис генерации недоступен. Пожалуйста, попробуйте позже.",
-                reply_markup=None
+                "Ошибка: сервис генерации недоступен. Пожалуйста, попробуйте позже.", reply_markup=None
             )
             logger.error("Generation client not found in bot_data")
             return
-        
+
         # Формируем session_id
         user_id = update.effective_user.id
         session_id = f"tg:{user_id}"
-        
+
         try:
             # Очищаем историю
             await generation_client.clear_session(session_id)
-            await query.edit_message_text(
-                "✅ История диалога успешно очищена.",
-                reply_markup=None
-            )
+            await query.edit_message_text("✅ История диалога успешно очищена.", reply_markup=None)
             logger.info(f"Пользователь {update.effective_user.username} очистил историю диалога")
         except Exception as e:
             logger.error(f"Ошибка при очистке истории: {e}", exc_info=True)
-            await query.edit_message_text(
-                f"Произошла ошибка при очистке истории: {str(e)}",
-                reply_markup=None
-            )
-    
+            await query.edit_message_text(f"Произошла ошибка при очистке истории: {str(e)}", reply_markup=None)
+
     elif query.data == "clear_history_no":
-        await query.edit_message_text(
-            "Очистка истории отменена.",
-            reply_markup=None
-        )
+        await query.edit_message_text("Очистка истории отменена.", reply_markup=None)
         logger.info(f"Пользователь {update.effective_user.username} отменил очистку истории")
 
 

@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -9,12 +9,12 @@ class Settings(BaseSettings):
 
     # Telegram API credentials
     api_id: int | None = Field(default=None)
-    
-    @field_validator('api_id', mode='before')
+
+    @field_validator("api_id", mode="before")
     @classmethod
     def parse_api_id(cls, v):
         # Обрабатываем пустые строки и None
-        if v == '' or v is None:
+        if v == "" or v is None:
             return None
         # Преобразуем строку в int
         if isinstance(v, str):
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
         if isinstance(v, int):
             return v
         return None
-    
+
     api_hash: str | None = None
     phone: str | None = None
     session_name: str = "my_session"
