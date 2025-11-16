@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 import httpx
 
@@ -129,8 +130,9 @@ class GenerationService:
 
         context = "\n\n".join(context_parts)
 
-        # Используем промпт из prompts.py
-        return USER_PROMPT.format(context=context, query=query)
+        # Получаем текущее время и используем промпт из prompts.py
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return USER_PROMPT.format(context=context, query=query, current_time=current_time)
 
     async def _call_llm(
         self, messages: list[dict[str, str]], temperature: float | None = None, max_tokens: int | None = None
