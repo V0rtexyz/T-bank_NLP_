@@ -165,13 +165,29 @@ class VectorSearch:
 
         await self._ensure_collection()
 
+        # Загружаем документы батчами для избежания таймаутов
+        batch_size = 10
+        total_uploaded = 0
+        
         try:
-            await self.client.upsert(collection_name=self.collection_name, points=points)
+            for i in range(0, len(points), batch_size):
+                batch = points[i : i + batch_size]
+                await self.client.upsert(collection_name=self.collection_name, points=batch)
+                total_uploaded += len(batch)
+                logger.info(
+                    f"📦 [retriever][vector_search] Загружено {total_uploaded}/{len(points)} документов"
+                )
+                # Небольшая задержка между батчами для стабильности
+                if i + batch_size < len(points):
+                    await asyncio.sleep(0.1)
+            
             logger.info(
-                f"✅ [retriever][vector_search] Добавлено {len(documents)} документов в коллекцию {self.collection_name}"
+                f"✅ [retriever][vector_search] Успешно добавлено {len(documents)} документов в коллекцию {self.collection_name}"
             )
         except Exception as e:
-            logger.error(f"❌ [retriever][vector_search] Ошибка при добавлении документов в Qdrant: {e}")
+            logger.error(
+                f"❌ [retriever][vector_search] Ошибка при добавлении документов в Qdrant: {e}"
+            )
             raise
 
     async def search(

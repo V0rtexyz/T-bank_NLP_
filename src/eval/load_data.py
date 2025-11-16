@@ -44,7 +44,6 @@ async def load_messages_to_qdrant(
     # Подготовка данных
     documents = []
     metadatas = []
-    ids = []
 
     for msg in messages:
         text = msg.get("text", "").strip()
@@ -53,12 +52,9 @@ async def load_messages_to_qdrant(
 
         documents.append(text)
 
-        # ID = channel_id + _ + message_id
-        doc_id = f"{msg['channel_id']}_{msg['id']}"
-        ids.append(doc_id)
-
-        # Метаданные
+        # Метаданные (составной ID храним в метаданных как doc_id)
         metadata = {
+            "doc_id": f"{msg['channel_id']}_{msg['id']}",  # Составной ID для удобства
             "message_id": msg["id"],
             "channel_id": msg["channel_id"],
             "date": msg.get("date", ""),
@@ -77,9 +73,9 @@ async def load_messages_to_qdrant(
         logger.warning("⚠️ Удаление существующих документов из Qdrant...")
         await retriever.delete_all_documents()
 
-    # Загрузка документов в Qdrant
+    # Загрузка документов в Qdrant (UUID будут сгенерированы автоматически)
     logger.info("🔄 Загрузка документов в Qdrant...")
-    await retriever.add_documents(documents=documents, ids=ids, metadatas=metadatas)
+    await retriever.add_documents(documents=documents, metadatas=metadatas)
 
     logger.info("=" * 80)
     logger.info(f"✅ УСПЕШНО ЗАГРУЖЕНО {len(documents)} ДОКУМЕНТОВ")

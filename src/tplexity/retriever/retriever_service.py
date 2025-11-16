@@ -93,12 +93,15 @@ class RetrieverService:
         self.top_n = settings.top_n
         self.prefetch_ratio = settings.prefetch_ratio
 
-    async def add_documents(self, documents: list[str], metadatas: list[dict] | None = None) -> None:
+    async def add_documents(
+        self, documents: list[str], ids: list[str] | None = None, metadatas: list[dict] | None = None
+    ) -> None:
         """
         Добавить новые документы в векторную базу данных
 
         Args:
             documents (list[str]): Список новых документов
+            ids (list[str] | None): Список ID для документов. Если None, генерируются UUID
             metadatas (list[dict] | None): Список словарей с метаданными для каждого документа
 
         Raises:
@@ -113,7 +116,7 @@ class RetrieverService:
         logger.info(f"🔄 [retriever_service] Добавление {len(documents)} новых документов")
 
         try:
-            await self.vector_search.add_documents(documents, ids=None, metadatas=metadatas)
+            await self.vector_search.add_documents(documents, ids=ids, metadatas=metadatas)
             logger.info("✅ [retriever_service] Документы добавлены в Qdrant")
         except Exception as e:
             logger.error(f"❌ [retriever_service] Ошибка при добавлении документов в Qdrant: {e}")
