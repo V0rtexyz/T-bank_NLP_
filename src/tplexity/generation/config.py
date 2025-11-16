@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     # Retriever API настройки
     retriever_api_url: str = "http://localhost:8010"
-    retriever_api_timeout: float = 30.0
+    retriever_api_timeout: float = 60.0
 
     # Redis настройки
     redis_host: str = "redis"

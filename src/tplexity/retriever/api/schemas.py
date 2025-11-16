@@ -21,6 +21,9 @@ class SearchRequest(BaseModel):
     top_k: int = Field(default=10, ge=1, le=200, description="Количество документов до реранка")
     top_n: int = Field(default=10, ge=1, le=100, description="Количество документов после реранка (возвращаемые)")
     use_rerank: bool = Field(default=True, description="Использовать ли reranking")
+    messages: list[dict[str, str]] | None = Field(
+        default=None, description="История диалога для переформулирования запроса"
+    )
 
 
 class SearchResult(BaseModel):

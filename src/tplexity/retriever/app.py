@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from tplexity.retriever.api import router
+from tplexity.retriever.api.dependencies import get_retriever
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -26,6 +27,9 @@ async def lifespan(app: FastAPI):
     Запускается при старте и остановке приложения
     """
     logger.info("🚀 [retriever] Запуск Retriever микросервиса")
+    logger.info("🔄 [retriever] Инициализация RetrieverService и загрузка моделей...")
+    get_retriever()
+    logger.info("✅ [retriever] RetrieverService инициализирован, все модели загружены")
     yield
     logger.info("🛑 [retriever] Остановка Retriever микросервиса")
 

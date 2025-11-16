@@ -14,6 +14,8 @@ QUERY_REFORMULATION_PROMPT = """
 Переформулированный запрос должен быть на русском языке.
 Не давай пояснений или комментариев, только текст запроса.
 
+{conversation_context}
+
 Исходный запрос: {query}
 
 Переформулированный запрос:
@@ -151,22 +153,42 @@ class RetrieverService:
             logger.error(f"❌ [retriever_service] Ошибка при добавлении документов в Qdrant: {e}")
             raise
 
-    async def _reformulate_query(self, query: str) -> str:
+    async def _reformulate_query(self, query: str, messages: list[dict[str, str]] | None = None) -> str:
         """
         Переформулировать запрос для улучшения качества поиска
 
         Args:
             query (str): Исходный поисковый запрос
+            messages (list[dict[str, str]] | None): История диалога для контекста
 
         Returns:
             str: Переформулированный запрос
         """
         try:
             logger.debug(f"🔄 [retriever_service] Переформулирование запроса: {query[:50]}...")
+
+            conversation_context = ""
+            if messages:
+                recent_messages = messages[-6:] if len(messages) > 6 else messages
+                context_parts = []
+                for message in recent_messages:
+                    role = message.get("role", "")
+                    content = message.get("content", "")
+                    if role == "user":
+                        context_parts.append(f"Пользователь: {content}")
+                    elif role == "assistant":
+                        context_parts.append(f"Ассистент: {content}")
+
+                if context_parts:
+                    conversation_context = "Контекст предыдущего диалога:\n" + "\n".join(context_parts) + "\n\n"
+
             messages = [
                 {
                     "role": "user",
-                    "content": QUERY_REFORMULATION_PROMPT.format(query=query),
+                    "content": QUERY_REFORMULATION_PROMPT.format(
+                        conversation_context=conversation_context,
+                        query=query,
+                    ),
                 }
             ]
             reformulated_query = await self.llm_client.generate(messages, temperature=0.3, max_tokens=200)
@@ -188,6 +210,7 @@ class RetrieverService:
         top_k: int | None = None,
         top_n: int | None = None,
         use_rerank: bool = True,
+        messages: list[dict[str, str]] | None = None,
     ) -> list[tuple[str, float, str, dict | None]]:
         """
         Гибридный поиск: Query Reformulation → BM25 + Embeddings → RRF (в Qdrant) → Rerank
@@ -220,7 +243,7 @@ class RetrieverService:
 
         # Шаг 0: Переформулирование запроса
         if self.enable_query_reformulation and self.llm_client:
-            search_query = await self._reformulate_query(query)
+            search_query = await self._reformulate_query(query, messages)
         else:
             search_query = query
 
