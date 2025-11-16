@@ -22,6 +22,23 @@ services:
       retries: 3
       start_period: 40s
 
+  # Redis сервис - хранение истории диалогов
+  redis:
+    image: redis:7-alpine
+    container_name: tplexity-redis-memory
+    ports:
+      - "6389:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - tplexity-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    command: redis-server --appendonly yes
+
   # Generation сервис - генерация ответов с RAG
   generation:
     build:
@@ -37,9 +54,12 @@ services:
     environment:
       # Только переменные, специфичные для Docker (внутренние адреса контейнеров)
       - RETRIEVER_API_URL=http://retriever:8010
+      - REDIS_HOST=redis
       # Остальные переменные загружаются из .env файлов
     depends_on:
       retriever:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - tplexity-network
@@ -116,5 +136,7 @@ volumes:
   tg_parse_data:
     driver: local
   tg_parse_sessions:
+    driver: local
+  redis_data:
     driver: local
 

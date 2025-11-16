@@ -30,6 +30,7 @@ dependencies = [
     "langchain-text-splitters (>=0.0.1)",
     "python-multipart (>=0.0.6)",
     "hf-xet (>=1.2.0,<2.0.0)",
+    "redis[hiredis] (>=5.0.0,<6.0.0)",
 ]
 
 [tool.poetry]

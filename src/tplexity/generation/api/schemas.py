@@ -35,6 +35,10 @@ class GenerateRequest(BaseModel):
         default=None,
         description="Провайдер LLM для использования (если не указано, используется значение из config)",
     )
+    session_id: str | None = Field(
+        default=None,
+        description="Идентификатор сессии для сохранения истории диалога (если не указано, история не сохраняется)",
+    )
 
 
 class SourceInfo(BaseModel):
@@ -50,3 +54,16 @@ class GenerateResponse(BaseModel):
     answer: str = Field(..., description="Сгенерированный ответ")
     sources: list[SourceInfo] = Field(default_factory=list, description="Список источников (doc_ids и метаданные)")
     query: str = Field(..., description="Исходный запрос пользователя")
+
+
+class ClearSessionRequest(BaseModel):
+    """Схема для запроса очистки истории сессии"""
+
+    session_id: str = Field(..., description="Идентификатор сессии для очистки")
+
+
+class ClearSessionResponse(BaseModel):
+    """Схема для ответа очистки истории сессии"""
+
+    success: bool = Field(..., description="Успешность операции")
+    message: str = Field(..., description="Сообщение о результате")

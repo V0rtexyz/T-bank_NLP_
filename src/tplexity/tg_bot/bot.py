@@ -26,8 +26,11 @@ logger = logging.getLogger(__name__)
 
 
 def get_keyboard():
-    """Создает клавиатуру с кнопкой 'Выбор модели'."""
-    keyboard = [[KeyboardButton("Выбор модели")]]
+    """Создает клавиатуру с кнопками 'Выбор модели' и 'Удалить историю из памяти'."""
+    keyboard = [
+        [KeyboardButton("Выбор модели")],
+        [KeyboardButton("Удалить историю из памяти")],
+    ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
@@ -49,6 +52,17 @@ def get_models_keyboard():
         display_name = model_names.get(model, model.capitalize())
         keyboard.append([InlineKeyboardButton(display_name, callback_data=f"model_{model}")])
     
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_clear_history_confirmation_keyboard():
+    """Создает inline клавиатуру для подтверждения очистки истории."""
+    keyboard = [
+        [
+            InlineKeyboardButton("Да", callback_data="clear_history_yes"),
+            InlineKeyboardButton("Нет", callback_data="clear_history_no"),
+        ]
+    ]
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -194,6 +208,14 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(message_text, reply_markup=get_models_keyboard())
         return
 
+    # Если пользователь нажал кнопку "Удалить историю из памяти"
+    if user_message == "Удалить историю из памяти":
+        await update.message.reply_text(
+            "Вы уверены что хотите сбросить память?",
+            reply_markup=get_clear_history_confirmation_keyboard(),
+        )
+        return
+
     # Получаем клиент сервиса из контекста приложения
     generation_client: GenerationClient = context.bot_data.get("generation_client")
 
@@ -218,9 +240,13 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
     try:
-        # Отправляем запрос в Generation API с выбранной моделью
+        # Формируем session_id на основе user_id (один чат на пользователя)
+        user_id = update.effective_user.id
+        session_id = f"tg:{user_id}"
+
+        # Отправляем запрос в Generation API с выбранной моделью и session_id
         answer, sources = await generation_client.send_message(
-            user_message, llm_provider=selected_model
+            user_message, llm_provider=selected_model, session_id=session_id
         )
 
         # Логируем полученные источники для отладки
@@ -288,6 +314,52 @@ async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.edit_message_text("Ошибка при выборе модели.", reply_markup=None)
 
 
+async def clear_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик подтверждения очистки истории через inline кнопки."""
+    query = update.callback_query
+    
+    # Отвечаем на callback query
+    await query.answer()
+    
+    if query.data == "clear_history_yes":
+        # Получаем клиент сервиса из контекста приложения
+        generation_client: GenerationClient = context.bot_data.get("generation_client")
+        
+        if not generation_client:
+            await query.edit_message_text(
+                "Ошибка: сервис генерации недоступен. Пожалуйста, попробуйте позже.",
+                reply_markup=None
+            )
+            logger.error("Generation client not found in bot_data")
+            return
+        
+        # Формируем session_id
+        user_id = update.effective_user.id
+        session_id = f"tg:{user_id}"
+        
+        try:
+            # Очищаем историю
+            await generation_client.clear_session(session_id)
+            await query.edit_message_text(
+                "✅ История диалога успешно очищена.",
+                reply_markup=None
+            )
+            logger.info(f"Пользователь {update.effective_user.username} очистил историю диалога")
+        except Exception as e:
+            logger.error(f"Ошибка при очистке истории: {e}", exc_info=True)
+            await query.edit_message_text(
+                f"Произошла ошибка при очистке истории: {str(e)}",
+                reply_markup=None
+            )
+    
+    elif query.data == "clear_history_no":
+        await query.edit_message_text(
+            "Очистка истории отменена.",
+            reply_markup=None
+        )
+        logger.info(f"Пользователь {update.effective_user.username} отменил очистку истории")
+
+
 async def main() -> None:
     """Запуск бота."""
     # Получаем токен из настроек
@@ -321,6 +393,7 @@ async def main() -> None:
 
     # Регистрируем обработчик для callback query (нажатие на inline кнопки)
     application.add_handler(CallbackQueryHandler(model_callback, pattern="^model_"))
+    application.add_handler(CallbackQueryHandler(clear_history_callback, pattern="^clear_history_"))
 
     # Регистрируем обработчик для всех текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
@@ -367,6 +440,7 @@ def register_handlers(application: Application) -> None:
 
     # Регистрируем обработчик для callback query (нажатие на inline кнопки)
     application.add_handler(CallbackQueryHandler(model_callback, pattern="^model_"))
+    application.add_handler(CallbackQueryHandler(clear_history_callback, pattern="^clear_history_"))
 
     # Регистрируем обработчик для всех текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))

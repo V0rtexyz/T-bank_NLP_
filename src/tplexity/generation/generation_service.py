@@ -4,6 +4,7 @@ from typing import Literal
 import httpx
 
 from tplexity.generation.config import settings
+from tplexity.generation.memory_service import MemoryService
 from tplexity.llm_client import get_llm
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,7 @@ class GenerationService:
         self,
         llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None = None,
         retriever_url: str | None = None,
+        memory_service: MemoryService | None = None,
     ):
         """
         Инициализация сервиса генерации
@@ -97,6 +99,7 @@ class GenerationService:
         Args:
             llm_provider (Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None): Провайдер LLM
             retriever_url (str | None): URL Retriever API (если None, берется из config)
+            memory_service (MemoryService | None): Сервис для работы с памятью диалогов
         """
         logger.info("🔄 [generation_service] Инициализация сервиса генерации")
 
@@ -107,6 +110,9 @@ class GenerationService:
         # Выбираем провайдер LLM
         self.llm_provider = llm_provider or settings.llm_provider
         self.llm_client = get_llm(self.llm_provider)
+
+        # Инициализируем сервис памяти
+        self.memory_service = memory_service or MemoryService()
 
         logger.info(f"✅ [generation_service] Сервис генерации инициализирован: provider={self.llm_provider}")
 
@@ -163,6 +169,7 @@ class GenerationService:
         temperature: float | None = None,
         max_tokens: int | None = None,
         llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None = None,
+        session_id: str | None = None,
     ) -> tuple[str, list[str], list[dict | None]]:
         """
         Генерация ответа с использованием RAG
@@ -174,6 +181,7 @@ class GenerationService:
             temperature: Температура генерации (если None, используется значение из llm config)
             max_tokens: Максимальное количество токенов (если None, используется значение из llm config)
             llm_provider: Провайдер LLM для использования (если None, используется значение из self.llm_provider)
+            session_id: Идентификатор сессии для сохранения истории диалога (если None, история не сохраняется)
 
         Returns:
             tuple[str, list[str], list[dict | None]]: (ответ, список doc_ids, список метаданных)
@@ -215,11 +223,30 @@ class GenerationService:
         logger.debug("🔄 [generation_service] Формирование промпта с контекстом")
         prompt = self._build_prompt(query, context_documents)
 
-        # Шаг 3: Генерация ответа через LLM
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ]
+        # Шаг 3: Получаем историю диалога из памяти (если указан session_id)
+        messages = []
+        if session_id:
+            history = await self.memory_service.get_history(session_id)
+            if history:
+                # Если есть история, используем её (она уже содержит системный промпт если был сохранен)
+                messages = history.copy()
+                # Добавляем текущий запрос пользователя с контекстом
+                messages.append({"role": "user", "content": prompt})
+                logger.info(f"📚 [generation_service] Использована история диалога: {len(history)} сообщений")
+            else:
+                # Если истории нет, создаем новую с системным промптом
+                messages = [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ]
+                logger.debug("📚 [generation_service] История диалога пуста, создана новая сессия")
+        else:
+            # Если session_id не указан, работаем без истории
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ]
+            logger.debug("📚 [generation_service] Работа без истории диалога (session_id не указан)")
 
         # Если указан провайдер, получаем соответствующий клиент
         if llm_provider:
@@ -235,13 +262,44 @@ class GenerationService:
         answer = await llm_client.generate(messages, temperature=temperature, max_tokens=max_tokens)
         logger.info("✅ [generation_service] Ответ успешно сгенерирован")
 
+        # Шаг 4: Сохраняем историю диалога в память (если указан session_id)
+        if session_id:
+            try:
+                # Если история была пуста, нужно сначала сохранить системный промпт
+                if not await self.memory_service.get_history(session_id):
+                    await self.memory_service.add_message(session_id, "system", SYSTEM_PROMPT)
+
+                # Добавляем оригинальный запрос пользователя (без контекста документов) и ответ ассистента
+                # Сохраняем оригинальный query, а не prompt с контекстом, чтобы история была чище
+                await self.memory_service.add_message(session_id, "user", query)
+                await self.memory_service.add_message(session_id, "assistant", answer)
+
+                # Обновляем TTL сессии
+                await self.memory_service.update_ttl(session_id)
+                logger.info(f"💾 [generation_service] История диалога сохранена для сессии {session_id}")
+            except Exception as e:
+                logger.error(f"❌ [generation_service] Ошибка при сохранении истории для сессии {session_id}: {e}")
+                # Продолжаем выполнение даже если сохранение не удалось
+
         # Извлекаем источники (всегда включаем)
         doc_ids = [doc_id for doc_id, _, _, _ in context_documents]
         metadatas = [metadata for _, _, _, metadata in context_documents]
 
         return answer, doc_ids, metadatas
 
+    async def clear_session(self, session_id: str) -> None:
+        """
+        Очищает историю диалога для указанной сессии
+
+        Args:
+            session_id: Идентификатор сессии
+        """
+        await self.memory_service.clear_history(session_id)
+        logger.info(f"🗑️ [generation_service] История сессии {session_id} очищена")
+
     async def close(self) -> None:
-        """Закрытие LLM клиента"""
+        """Закрытие LLM клиента и сервиса памяти"""
         if hasattr(self, "llm_client") and hasattr(self.llm_client, "client"):
             await self.llm_client.client.close()
+        if hasattr(self, "memory_service"):
+            await self.memory_service.close()

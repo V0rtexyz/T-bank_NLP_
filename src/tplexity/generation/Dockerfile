@@ -10,11 +10,11 @@ RUN apt-get update && apt-get install -y \
 
 # Копирование файлов зависимостей из корня проекта
 COPY pyproject.toml poetry.lock /app/
-COPY requirements.txt /app/
 
 # Установка Poetry и зависимостей
 RUN pip install --no-cache-dir poetry && \
     poetry config virtualenvs.create false && \
+    poetry lock && \
     poetry install --only=main --no-root --no-interaction --no-ansi
 
 # Копирование исходного кода

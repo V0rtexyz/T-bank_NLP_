@@ -5,7 +5,13 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from tplexity.generation.api.dependencies import get_generation
-from tplexity.generation.api.schemas import GenerateRequest, GenerateResponse, SourceInfo
+from tplexity.generation.api.schemas import (
+    ClearSessionRequest,
+    ClearSessionResponse,
+    GenerateRequest,
+    GenerateResponse,
+    SourceInfo,
+)
 from tplexity.generation.generation_service import GenerationService
 
 logger = logging.getLogger(__name__)
@@ -41,6 +47,7 @@ async def generate(
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             llm_provider=request.llm_provider,
+            session_id=request.session_id,
         )
 
         # Формируем список источников (всегда включаем)
@@ -65,4 +72,34 @@ async def generate(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при генерации ответа: {str(e)}",
+        ) from e
+
+
+@router.post("/clear-session", response_model=ClearSessionResponse)
+async def clear_session(
+    request: ClearSessionRequest,
+    generation: GenerationService = Depends(get_generation),
+) -> ClearSessionResponse:
+    """
+    Очистка истории диалога для указанной сессии
+
+    Args:
+        request: Запрос с идентификатором сессии
+        generation: Экземпляр GenerationService
+
+    Returns:
+        ClearSessionResponse: Результат операции очистки
+    """
+    try:
+        await generation.clear_session(request.session_id)
+        logger.info(f"✅ [generation.api] История сессии {request.session_id} успешно очищена")
+        return ClearSessionResponse(
+            success=True,
+            message=f"История сессии {request.session_id} успешно очищена",
+        )
+    except Exception as e:
+        logger.error(f"❌ [generation.api] Ошибка при очистке истории сессии {request.session_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при очистке истории сессии: {str(e)}",
         ) from e

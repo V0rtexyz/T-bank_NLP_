@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     retriever_api_url: str = "http://localhost:8010"
     retriever_api_timeout: float = 30.0
 
+    # Redis настройки
+    redis_host: str = "redis"
+    redis_port: int = 6379  # Внутри Docker сети Redis слушает на стандартном порту 6379
+    redis_db: int = 0
+    redis_password: str | None = None
+    session_ttl: int = 86400  # 24 часа в секундах
+    max_history_messages: int = 200  # Максимум 200 сообщений (100 пар запрос-ответ)
+
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).parent / ".env"),
         env_file_encoding="utf-8",

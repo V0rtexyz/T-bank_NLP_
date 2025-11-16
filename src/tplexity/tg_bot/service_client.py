@@ -42,6 +42,7 @@ class GenerationClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
         llm_provider: str | None = None,
+        session_id: str | None = None,
     ) -> tuple[str, list[dict]]:
         """
         Отправляет запрос на генерацию ответа в Generation API.
@@ -53,6 +54,7 @@ class GenerationClient:
             temperature: Температура генерации (опционально)
             max_tokens: Максимальное количество токенов (опционально)
             llm_provider: Провайдер LLM для использования (опционально)
+            session_id: Идентификатор сессии для сохранения истории диалога (опционально)
 
         Returns:
             tuple[str, list[dict]]: Кортеж (сгенерированный ответ, список источников с метаданными)
@@ -81,6 +83,9 @@ class GenerationClient:
             logger.info(f"📤 [tg_bot.service_client] Отправка запроса с llm_provider={llm_provider}")
         else:
             logger.info("📤 [tg_bot.service_client] Отправка запроса без указания llm_provider (будет использована модель по умолчанию)")
+        if session_id is not None:
+            payload["session_id"] = session_id
+            logger.debug(f"📤 [tg_bot.service_client] Отправка запроса с session_id={session_id}")
 
         try:
             logger.info(f"Sending request to generation API: {message_text[:50]}...")
@@ -125,6 +130,49 @@ class GenerationClient:
             raise ValueError(f"Ошибка подключения к generation API: {str(e)}") from e
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
+            raise
+
+    async def clear_session(self, session_id: str) -> None:
+        """
+        Очищает историю диалога для указанной сессии.
+
+        Args:
+            session_id: Идентификатор сессии для очистки
+
+        Raises:
+            ValueError: При ошибке запроса к API
+        """
+        await self._ensure_client()
+
+        url = f"{self.base_url}/generation/clear-session"
+        payload = {"session_id": session_id}
+
+        try:
+            logger.info(f"🗑️ [tg_bot.service_client] Очистка истории сессии: {session_id}")
+            response = await self._httpx_client.post(url, json=payload)
+            response.raise_for_status()
+
+            response_data = response.json()
+            if response_data.get("success"):
+                logger.info(f"✅ [tg_bot.service_client] История сессии {session_id} успешно очищена")
+            else:
+                logger.warning(f"⚠️ [tg_bot.service_client] Очистка истории сессии {session_id} не удалась")
+
+        except httpx.HTTPStatusError as e:
+            error_detail = "Unknown error"
+            try:
+                error_data = e.response.json()
+                error_detail = error_data.get("detail", str(e))
+            except Exception:
+                error_detail = str(e)
+
+            logger.error(f"HTTP error from generation API when clearing session: {error_detail}")
+            raise ValueError(f"Ошибка от generation API при очистке сессии: {error_detail}") from e
+        except httpx.RequestError as e:
+            logger.error(f"Request error to generation API when clearing session: {e}")
+            raise ValueError(f"Ошибка подключения к generation API при очистке сессии: {str(e)}") from e
+        except Exception as e:
+            logger.error(f"Unexpected error when clearing session: {e}")
             raise
 
     async def close(self) -> None:
