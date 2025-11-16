@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] = "qwen"
 
     # Retriever API настройки
-    retriever_api_url: str = "http://localhost:8000"
+    retriever_api_url: str = "http://localhost:8010"
     retriever_api_timeout: float = 30.0
 
     model_config = SettingsConfigDict(

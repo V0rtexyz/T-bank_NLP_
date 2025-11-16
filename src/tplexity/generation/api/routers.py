@@ -40,6 +40,7 @@ async def generate(
             use_rerank=request.use_rerank,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
+            llm_provider=request.llm_provider,
         )
 
         # Формируем список источников (всегда включаем)

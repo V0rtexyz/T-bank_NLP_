@@ -30,8 +30,8 @@ ENV PYTHONPATH=/app/src
 # из файла src/tplexity/retriever/.env
 
 # Порт для FastAPI
-EXPOSE 8000
+EXPOSE 8010
 
 # Запуск retriever сервиса
-CMD ["uvicorn", "tplexity.retriever.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "tplexity.retriever.app:app", "--host", "0.0.0.0", "--port", "8010"]
 

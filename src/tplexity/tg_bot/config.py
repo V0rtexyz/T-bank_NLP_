@@ -3,6 +3,13 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
 
+# Импортируем настройки из llm_client для получения списка доступных моделей
+try:
+    from tplexity.llm_client.config import settings as llm_settings
+except ImportError:
+    # Fallback если импорт не удался
+    llm_settings = None
+
 
 class Settings(BaseSettings):
     """Настройки Telegram Bot микросервиса из .env файла"""
@@ -19,8 +26,16 @@ class Settings(BaseSettings):
         return v
 
     # Generation API настройки
-    generation_api_url: str = "http://localhost:8002"
+    generation_api_url: str = "http://localhost:8012"
     generation_api_timeout: float = 60.0
+
+    @property
+    def available_models(self) -> list[str]:
+        """Получает список доступных моделей из llm_client настроек"""
+        if llm_settings and hasattr(llm_settings, 'available_models'):
+            return llm_settings.available_models
+        # Fallback если llm_settings недоступен
+        return ["qwen"]
 
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).parent / ".env"),

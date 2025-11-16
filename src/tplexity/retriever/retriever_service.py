@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import traceback
 
 from tplexity.retriever.config import settings
+from tplexity.retriever.reranker import get_reranker
 from tplexity.retriever.vector_search import VectorSearch
 
 logger = logging.getLogger(__name__)
@@ -56,11 +58,11 @@ class RetrieverService:
             prefetch_ratio=self.prefetch_ratio,
         )
 
-        # self.reranker = get_reranker()
-        # logger.info(
-        #     f"✅ [retriever_service] Гибридный поисковик инициализирован: "
-        #     f"top_k={self.top_k}, top_n={self.top_n}, prefetch_ratio={self.prefetch_ratio}"
-        # )
+        self.reranker = get_reranker()
+        logger.info(
+            f"✅ [retriever_service] Гибридный поисковик инициализирован: "
+            f"top_k={self.top_k}, top_n={self.top_n}, prefetch_ratio={self.prefetch_ratio}"
+        )
 
     def _init_config_params(
         self,

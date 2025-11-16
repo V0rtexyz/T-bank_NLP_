@@ -1,4 +1,5 @@
 import logging
+import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -97,7 +98,8 @@ async def search(
             total=len(search_results),
         )
     except Exception as e:
-        logger.error(f"❌ [retriever.api] Ошибка при поиске: {e}")
+        error_traceback = traceback.format_exc()
+        logger.error(f"❌ [retriever.api] Ошибка при поиске: {e}\n{error_traceback}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при поиске: {str(e)}",

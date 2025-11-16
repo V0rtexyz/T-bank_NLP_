@@ -8,7 +8,7 @@ services:
     image: t-bank-nlp-retriever
     container_name: tplexity-retriever
     ports:
-      - "8000:8000"
+      - "8010:8010"
     env_file:
       - src/tplexity/retriever/.env
     # Переменные окружения загружаются из .env файла
@@ -16,7 +16,7 @@ services:
     networks:
       - tplexity-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -30,13 +30,13 @@ services:
     image: t-bank-nlp-generation
     container_name: tplexity-generation
     ports:
-      - "8002:8002"
+      - "8012:8012"
     env_file:
       - src/tplexity/generation/.env
       - src/tplexity/llm_client/.env
     environment:
       # Только переменные, специфичные для Docker (внутренние адреса контейнеров)
-      - RETRIEVER_API_URL=http://retriever:8000
+      - RETRIEVER_API_URL=http://retriever:8010
       # Остальные переменные загружаются из .env файлов
     depends_on:
       retriever:
@@ -44,7 +44,7 @@ services:
     networks:
       - tplexity-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8012/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -58,12 +58,12 @@ services:
     image: t-bank-nlp-tg-bot
     container_name: tplexity-tg-bot
     ports:
-      - "8003:8003"
+      - "8013:8013"
     env_file:
       - src/tplexity/tg_bot/.env
     environment:
       # Только переменные, специфичные для Docker (внутренние адреса контейнеров)
-      - GENERATION_API_URL=http://generation:8002
+      - GENERATION_API_URL=http://generation:8012
       # Остальные переменные загружаются из .env файла
     depends_on:
       generation:
@@ -71,7 +71,7 @@ services:
     networks:
       - tplexity-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8013/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -85,7 +85,7 @@ services:
     image: t-bank-nlp-tg-parse
     container_name: tplexity-tg-parse
     ports:
-      - "8001:8001"
+      - "8011:8011"
     volumes:
       - tg_parse_data:/app/data
       - tg_parse_sessions:/app
@@ -93,7 +93,7 @@ services:
       - src/tplexity/tg_parse/.env
     environment:
       # Только переменные, специфичные для Docker (внутренние адреса контейнеров)
-      - WEBHOOK_URL=http://retriever:8000/retriever/documents
+      - WEBHOOK_URL=http://retriever:8010/retriever/documents
       - DATA_DIR=/app/data
       # Остальные переменные загружаются из .env файла
     depends_on:
@@ -102,7 +102,7 @@ services:
     networks:
       - tplexity-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
       interval: 30s
       timeout: 10s
       retries: 3

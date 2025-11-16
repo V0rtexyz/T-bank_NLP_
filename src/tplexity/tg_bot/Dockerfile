@@ -26,13 +26,13 @@ COPY src/ /app/src/
 
 ENV PYTHONPATH=/app/src
 
-ENV GENERATION_API_URL=http://generation:8002
+ENV GENERATION_API_URL=http://generation:8012
 # Переменные окружения передаются через env_file в docker-compose.yml
 # из файла src/tplexity/tg_bot/.env
 
 # Порт для FastAPI
-EXPOSE 8003
+EXPOSE 8013
 
 # Запуск tg_bot сервиса
-CMD ["uvicorn", "tplexity.tg_bot.app:app", "--host", "0.0.0.0", "--port", "8003"]
+CMD ["uvicorn", "tplexity.tg_bot.app:app", "--host", "0.0.0.0", "--port", "8013"]
 

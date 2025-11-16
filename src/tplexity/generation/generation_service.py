@@ -22,7 +22,7 @@ class RetrieverClient:
         Инициализация клиента
 
         Args:
-            base_url: Базовый URL Retriever API (например, http://localhost:8000)
+            base_url: Базовый URL Retriever API (например, http://localhost:8010)
             timeout: Таймаут запросов в секундах
         """
         self.base_url = base_url.rstrip("/")
@@ -162,6 +162,7 @@ class GenerationService:
         use_rerank: bool | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None = None,
     ) -> tuple[str, list[str], list[dict | None]]:
         """
         Генерация ответа с использованием RAG
@@ -172,6 +173,7 @@ class GenerationService:
             use_rerank: Использовать ли reranking (если None, используется True по умолчанию)
             temperature: Температура генерации (если None, используется значение из llm config)
             max_tokens: Максимальное количество токенов (если None, используется значение из llm config)
+            llm_provider: Провайдер LLM для использования (если None, используется значение из self.llm_provider)
 
         Returns:
             tuple[str, list[str], list[dict | None]]: (ответ, список doc_ids, список метаданных)
@@ -185,6 +187,12 @@ class GenerationService:
         # Если use_rerank не указан, используем True по умолчанию
         use_rerank = use_rerank if use_rerank is not None else True
 
+        # Выбираем провайдер LLM (если указан в запросе, используем его, иначе используем из self)
+        provider = llm_provider or self.llm_provider
+        if llm_provider:
+            logger.info(f"🔄 [generation_service] Получен запрос с llm_provider={llm_provider}, будет использован провайдер: {provider}")
+        else:
+            logger.info(f"🔄 [generation_service] Запрос без указания llm_provider, используется провайдер по умолчанию: {provider}")
         logger.info(f"🔄 [generation_service] Начало генерации для запроса: {query[:50]}...")
 
         # Шаг 1: Поиск релевантных документов через Retriever API
@@ -213,8 +221,18 @@ class GenerationService:
             {"role": "user", "content": prompt},
         ]
 
-        logger.debug("🔄 [generation_service] Генерация ответа через LLM")
-        answer = await self._call_llm(messages, temperature=temperature, max_tokens=max_tokens)
+        # Если указан провайдер, получаем соответствующий клиент
+        if llm_provider:
+            # Используем запрошенный провайдер (даже если он совпадает с дефолтным)
+            llm_client = get_llm(llm_provider)
+            logger.info(f"✅ [generation_service] Использование запрошенного LLM провайдера: {llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})")
+        else:
+            # Используем провайдер по умолчанию
+            llm_client = self.llm_client
+            logger.info(f"✅ [generation_service] Использование провайдера по умолчанию: {self.llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})")
+
+        logger.info(f"🔄 [generation_service] Генерация ответа через LLM провайдер={llm_provider or self.llm_provider}, модель={llm_client.model}")
+        answer = await llm_client.generate(messages, temperature=temperature, max_tokens=max_tokens)
         logger.info("✅ [generation_service] Ответ успешно сгенерирован")
 
         # Извлекаем источники (всегда включаем)

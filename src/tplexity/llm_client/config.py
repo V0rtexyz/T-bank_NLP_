@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +31,20 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     gemini_api_key: str = ""
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+    # Список доступных моделей для выбора
+    # Если не указано в .env, по умолчанию используется только qwen
+    available_models: str = "qwen"
+
+    @field_validator('available_models', mode='after')
+    @classmethod
+    def parse_available_models(cls, v: str) -> list[str]:
+        """Парсит строку с моделями в список"""
+        if not v or not v.strip():
+            return ["qwen"]  # По умолчанию только qwen
+        # Парсим список моделей из .env без ограничений
+        models = [m.strip().lower() for m in v.split(",") if m.strip()]
+        return models if models else ["qwen"]  # Если список пустой, возвращаем qwen
 
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).parent / ".env"),

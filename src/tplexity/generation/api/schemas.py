@@ -1,5 +1,7 @@
 """Pydantic схемы для generation API"""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -28,6 +30,10 @@ class GenerateRequest(BaseModel):
         ge=1,
         le=4000,
         description="Максимальное количество токенов в ответе (если не указано, используется значение из config)",
+    )
+    llm_provider: Literal["qwen", "yandexgpt", "chatgpt", "gemini"] | None = Field(
+        default=None,
+        description="Провайдер LLM для использования (если не указано, используется значение из config)",
     )
 
 

@@ -29,12 +29,12 @@ RUN mkdir -p /app/data
 # Установка переменных окружения по умолчанию
 # ENV PYTHONPATH=/app
 ENV PYTHONPATH=/app/src
-ENV WEBHOOK_URL=http://retriever:8000/retriever/documents
+ENV WEBHOOK_URL=http://retriever:8010/retriever/documents
 ENV DATA_DIR=/app/data
 
 # Порт для FastAPI
-EXPOSE 8001
+EXPOSE 8011
 
 # Запуск tg_parse сервиса
-CMD ["uvicorn", "tplexity.tg_parse.app:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "tplexity.tg_parse.app:app", "--host", "0.0.0.0", "--port", "8011"]
 

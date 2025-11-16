@@ -76,7 +76,7 @@ class LLMClient:
         temperature = temperature or settings.temperature
         max_tokens = max_tokens or settings.max_tokens
 
-        logger.debug(f"🔄 [llm_client] Отправка запроса к LLM: model={self.model}")
+        logger.info(f"🔄 [llm_client] Отправка запроса к LLM: model={self.model}, base_url={self.base_url}")
 
         try:
             response = await self.client.chat.completions.create(
@@ -88,7 +88,7 @@ class LLMClient:
 
             answer = response.choices[0].message.content
 
-            logger.info("✅ [llm_client] Ответ получен от LLM")
+            logger.info(f"✅ [llm_client] Ответ получен от LLM (model={self.model})")
             return answer
         except Exception as e:
             logger.error(f"❌ [llm_client] Ошибка при вызове LLM: {e}")

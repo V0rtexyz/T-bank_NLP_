@@ -79,11 +79,11 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
 
-    # Запуск сервера на порту 8000
+    # Запуск сервера на порту 8010
     uvicorn.run(
         "tplexity.retriever.app:app",
         host="0.0.0.0",
-        port=8000,
+        port=8010,
         reload=True,
         log_level="info",
     )

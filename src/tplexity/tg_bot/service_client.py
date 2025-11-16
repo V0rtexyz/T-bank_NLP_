@@ -19,7 +19,7 @@ class GenerationClient:
         Инициализация клиента.
 
         Args:
-            base_url: Базовый URL сервиса (например, http://localhost:8000)
+            base_url: Базовый URL сервиса (например, http://localhost:8010)
             timeout: Таймаут запросов в секундах
         """
         # Убираем trailing slash если есть
@@ -41,7 +41,8 @@ class GenerationClient:
         use_rerank: bool | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-    ) -> str:
+        llm_provider: str | None = None,
+    ) -> tuple[str, list[dict]]:
         """
         Отправляет запрос на генерацию ответа в Generation API.
 
@@ -51,9 +52,10 @@ class GenerationClient:
             use_rerank: Использовать ли reranking (опционально)
             temperature: Температура генерации (опционально)
             max_tokens: Максимальное количество токенов (опционально)
+            llm_provider: Провайдер LLM для использования (опционально)
 
         Returns:
-            str: Сгенерированный ответ
+            tuple[str, list[dict]]: Кортеж (сгенерированный ответ, список источников с метаданными)
 
         Raises:
             httpx.HTTPError: При ошибке HTTP запроса
@@ -74,6 +76,11 @@ class GenerationClient:
             payload["temperature"] = temperature
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if llm_provider is not None:
+            payload["llm_provider"] = llm_provider
+            logger.info(f"📤 [tg_bot.service_client] Отправка запроса с llm_provider={llm_provider}")
+        else:
+            logger.info("📤 [tg_bot.service_client] Отправка запроса без указания llm_provider (будет использована модель по умолчанию)")
 
         try:
             logger.info(f"Sending request to generation API: {message_text[:50]}...")
@@ -89,8 +96,18 @@ class GenerationClient:
                 logger.warning("Empty answer received from generation API")
                 answer = "Не удалось получить ответ от сервиса генерации."
 
-            logger.info(f"Received response from generation API: {answer[:50]}...")
-            return answer
+            # Извлекаем источники из FastAPI response
+            sources = response_data.get("sources", [])
+            
+            # Логируем структуру источников для отладки
+            logger.info(f"📋 [tg_bot.service_client] Получено источников: {len(sources)}")
+            if sources:
+                logger.info(f"📋 [tg_bot.service_client] Первый источник (структура): {sources[0]}")
+                if isinstance(sources[0], dict):
+                    logger.info(f"📋 [tg_bot.service_client] Первый источник (metadata): {sources[0].get('metadata')}")
+
+            logger.info(f"Received response from generation API: {answer[:50]}... (sources: {len(sources)})")
+            return answer, sources
 
         except httpx.HTTPStatusError as e:
             error_detail = "Unknown error"

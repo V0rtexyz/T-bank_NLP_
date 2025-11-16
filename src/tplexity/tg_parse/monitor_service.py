@@ -213,13 +213,14 @@ class TelegramMonitorService:
             # Retriever ожидает: {"documents": [{"text": "...", "metadata": {...}}]}
             documents = []
             for chunk in chunks:
-                # Извлекаем текст чанка
-                text = chunk.get("text", "")
+                # Извлекаем текст чанка (в chunker используется "chunk_text")
+                text = chunk.get("chunk_text", chunk.get("text", ""))
                 if not text:
+                    logger.warning(f"⚠️ [monitor_service] Чанк без текста пропущен: {chunk.keys()}")
                     continue
 
-                # Формируем метаданные (все остальные поля кроме text)
-                metadata = {k: v for k, v in chunk.items() if k != "text"}
+                # Формируем метаданные (все остальные поля кроме chunk_text и text)
+                metadata = {k: v for k, v in chunk.items() if k not in ("chunk_text", "text")}
 
                 documents.append({"text": text, "metadata": metadata})
 
