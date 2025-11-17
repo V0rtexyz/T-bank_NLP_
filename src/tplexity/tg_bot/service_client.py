@@ -43,7 +43,7 @@ class GenerationClient:
         max_tokens: int | None = None,
         llm_provider: str | None = None,
         session_id: str | None = None,
-    ) -> tuple[str, str, list[dict], float | None, float, float]:
+    ) -> tuple[str, list[dict]]:
         """
         Отправляет запрос на генерацию ответа в Generation API.
 
@@ -57,8 +57,7 @@ class GenerationClient:
             session_id: Идентификатор сессии для сохранения истории диалога (опционально)
 
         Returns:
-            tuple[str, str, list[dict], float | None, float, float]: 
-            Кортеж (подробный ответ, краткий ответ, список источников, время поиска, время генерации, общее время)
+            tuple[str, list[dict]]: Кортеж (сгенерированный ответ, список источников с метаданными)
 
         Raises:
             httpx.HTTPError: При ошибке HTTP запроса
@@ -97,27 +96,15 @@ class GenerationClient:
 
             response_data = response.json()
 
-            # Извлекаем ответы из FastAPI response
-            detailed_answer = response_data.get("detailed_answer", "")
-            short_answer = response_data.get("short_answer", "")
-            # Для обратной совместимости, если новых полей нет
-            if not detailed_answer:
-                detailed_answer = response_data.get("answer", "")
-            if not short_answer:
-                short_answer = response_data.get("answer", "")
+            # Извлекаем ответ из FastAPI response
+            answer = response_data.get("answer", "")
 
-            if not detailed_answer or not short_answer:
+            if not answer:
                 logger.warning("Empty answer received from generation API")
-                error_message = "Не удалось получить ответ от сервиса генерации."
-                return error_message, error_message, [], None, 0.0, 0.0
+                answer = "Не удалось получить ответ от сервиса генерации."
 
             # Извлекаем источники из FastAPI response
             sources = response_data.get("sources", [])
-
-            # Извлекаем время генерации
-            search_time = response_data.get("search_time")
-            generation_time = response_data.get("generation_time", 0.0)
-            total_time = response_data.get("total_time", 0.0)
 
             # Логируем структуру источников для отладки
             logger.info(f"📋 [tg_bot.service_client] Получено источников: {len(sources)}")
@@ -126,8 +113,8 @@ class GenerationClient:
                 if isinstance(sources[0], dict):
                     logger.info(f"📋 [tg_bot.service_client] Первый источник (metadata): {sources[0].get('metadata')}")
 
-            logger.info(f"Received response from generation API: detailed={len(detailed_answer)} chars, short={len(short_answer)} chars (sources: {len(sources)})")
-            return detailed_answer, short_answer, sources, search_time, generation_time, total_time
+            logger.info(f"Received response from generation API: {answer[:50]}... (sources: {len(sources)})")
+            return answer, sources
 
         except httpx.HTTPStatusError as e:
             error_detail = "Unknown error"

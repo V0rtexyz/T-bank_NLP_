@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import time
 
 from tplexity.llm_client import get_llm
 from tplexity.retriever.config import settings
@@ -128,12 +127,15 @@ class RetrieverService:
         self.top_n = settings.top_n
         self.prefetch_ratio = settings.prefetch_ratio
 
-    async def add_documents(self, documents: list[str], metadatas: list[dict] | None = None) -> None:
+    async def add_documents(
+        self, documents: list[str], ids: list[str] | None = None, metadatas: list[dict] | None = None
+    ) -> None:
         """
         Добавить новые документы в векторную базу данных
 
         Args:
             documents (list[str]): Список новых документов
+            ids (list[str] | None): Список ID для документов. Если None, генерируются UUID
             metadatas (list[dict] | None): Список словарей с метаданными для каждого документа
 
         Raises:
@@ -145,9 +147,11 @@ class RetrieverService:
         if any(not doc or not doc.strip() for doc in documents):
             raise ValueError("Документы не могут быть пустыми или содержать только пробелы")
 
+        logger.info(f"🔄 [retriever_service] Добавление {len(documents)} новых документов")
+
         try:
-            await self.vector_search.add_documents(documents, ids=None, metadatas=metadatas)
-            logger.info(f"✅ [retriever_service] Добавлено {len(documents)} документов в Qdrant")
+            await self.vector_search.add_documents(documents, ids=ids, metadatas=metadatas)
+            logger.info("✅ [retriever_service] Документы добавлены в Qdrant")
         except Exception as e:
             logger.error(f"❌ [retriever_service] Ошибка при добавлении документов в Qdrant: {e}")
             raise
@@ -164,6 +168,8 @@ class RetrieverService:
             str: Переформулированный запрос
         """
         try:
+            logger.debug(f"🔄 [retriever_service] Переформулирование запроса: {query[:50]}...")
+
             conversation_context = ""
             if messages:
                 recent_messages = messages[-6:] if len(messages) > 6 else messages
@@ -188,10 +194,13 @@ class RetrieverService:
                     ),
                 }
             ]
-            reformulated_query = await self.llm_client.generate(messages, temperature=0.0, max_tokens=200)
+            reformulated_query = await self.llm_client.generate(messages, temperature=0.0, max_tokens=200, deterministic=True)
+            
             reformulated_query = reformulated_query.strip()
 
-            logger.debug(f"✅ [retriever_service] Запрос переформулирован: '{query[:50]}...' -> '{reformulated_query[:50]}...'")
+            logger.info(
+                f"✅ [retriever_service] Запрос переформулирован: '{query[:50]}...' -> '{reformulated_query[:50]}...'"
+            )
             return reformulated_query
         except Exception as e:
             logger.warning(
@@ -234,24 +243,17 @@ class RetrieverService:
         if top_n < 1:
             raise ValueError(f"top_n должен быть >= 1, получено: {top_n}")
 
-        logger.info(f"🔍 [retriever_service] Поиск: '{query[:50]}...' (top_k={top_k}, top_n={top_n})")
-        search_start_time = time.time()
+        logger.info(f"🔍 [retriever_service] Начало поиска для запроса: {query[:50]}...")
 
         # Шаг 0: Переформулирование запроса
-        reformulation_time = None
         if self.enable_query_reformulation and self.llm_client:
-            reformulation_start = time.time()
             search_query = await self._reformulate_query(query, messages)
-            reformulation_time = time.time() - reformulation_start
-            logger.debug(f"⏱️ [retriever_service] Query reformulation: {reformulation_time:.2f}с")
         else:
             search_query = query
 
-        # Шаг 1: Гибридный поиск
-        hybrid_start_time = time.time()
+        logger.debug(f"🔄 [retriever_service] Выполнение гибридного поиска, top_k: {top_k}")
         hybrid_results = await self.vector_search.search(search_query, top_k=top_k, search_type="hybrid")
-        hybrid_time = time.time() - hybrid_start_time
-        logger.info(f"✅ [retriever_service] Гибридный поиск завершен: найдено {len(hybrid_results)} результатов за {hybrid_time:.2f}с")
+        logger.info(f"✅ [retriever_service] Гибридный поиск завершен, найдено результатов: {len(hybrid_results)}")
 
         if not hybrid_results:
             logger.warning("⚠️ [retriever_service] Гибридный поиск не вернул результатов")
@@ -268,19 +270,15 @@ class RetrieverService:
             doc_id_to_text[doc_id] = text
 
         # Шаг 2: Reranking (опционально)
-        rerank_time = None
         if use_rerank and hybrid_results:
-            rerank_start_time = time.time()
-            # Берем топ-k документов для reranking (или все, если их меньше)
-            rerank_limit = min(top_k, len(hybrid_results))
-            rerank_doc_ids = [doc_id for doc_id, _, _, _ in hybrid_results[:rerank_limit]]
+            logger.info(f"🔄 [retriever_service] Выполнение reranking для топ-{top_k} результатов, вернем топ-{top_n}")
+            rerank_doc_ids = [doc_id for doc_id, _, _, _ in hybrid_results[:top_k]]
             rerank_documents = [doc_id_to_text.get(doc_id, "") for doc_id in rerank_doc_ids]
 
             # Reranking - используем оригинальный запрос для reranking
             # Reranking - возвращаем top_n результатов (асинхронно)
             rerank_results = await asyncio.to_thread(self.reranker.rerank, query, rerank_documents, top_n=top_n)
-            rerank_time = time.time() - rerank_start_time
-            logger.info(f"✅ [retriever_service] Reranking завершен: {len(rerank_results)}/{top_n} результатов за {rerank_time:.2f}с (из {rerank_limit} документов)")
+            logger.info(f"✅ [retriever_service] Reranking завершен, возвращено результатов: {len(rerank_results)}")
 
             # Маппинг обратно к оригинальным doc_id с метаданными
             final_results = []
@@ -300,13 +298,7 @@ class RetrieverService:
                 (doc_id, score, text, metadata_map.get(doc_id)) for doc_id, score, text, _ in hybrid_results[:top_n]
             ]
 
-        total_search_time = time.time() - search_start_time
-        reformulation_str = f"{reformulation_time:.2f}с" if reformulation_time is not None else "N/A"
-        rerank_str = f"{rerank_time:.2f}с" if rerank_time is not None else "N/A"
-        logger.info(
-            f"✅ [retriever_service] Поиск завершен: {len(final_results)} результатов за {total_search_time:.2f}с "
-            f"(reformulation: {reformulation_str}, hybrid: {hybrid_time:.2f}с, rerank: {rerank_str})"
-        )
+        logger.info(f"✅ [retriever_service] Поиск завершен, возвращено {len(final_results)} результатов")
         return final_results
 
     async def get_documents(self, doc_ids: list[str]) -> list[tuple[str, str, dict | None]]:
@@ -325,6 +317,7 @@ class RetrieverService:
         if not doc_ids:
             raise ValueError("Список ID документов не может быть пустым")
 
+        logger.info(f"🔄 [retriever_service] Получение {len(doc_ids)} документов")
         try:
             results = await self.vector_search.get_documents(doc_ids)
             logger.info(f"✅ [retriever_service] Получено {len(results)} документов")
@@ -340,6 +333,7 @@ class RetrieverService:
         Returns:
             list[tuple[str, str, dict | None]]: Список кортежей (doc_id, text, metadata)
         """
+        logger.info("🔄 [retriever_service] Получение всех документов")
         try:
             results = await self.vector_search.get_all_documents()
             logger.info(f"✅ [retriever_service] Получено {len(results)} документов")
@@ -361,19 +355,21 @@ class RetrieverService:
         if not doc_ids:
             raise ValueError("Список ID документов для удаления не может быть пустым")
 
+        logger.info(f"🔄 [retriever_service] Удаление {len(doc_ids)} документов")
         try:
             # Удаляем из Qdrant
             await self.vector_search.delete_documents(doc_ids)
-            logger.info(f"✅ [retriever_service] Удалено {len(doc_ids)} документов из Qdrant")
+            logger.info("✅ [retriever_service] Документы удалены из векторной базы")
         except Exception as e:
             logger.error(f"❌ [retriever_service] Ошибка при удалении документов: {e}")
             raise
 
     async def delete_all_documents(self) -> None:
         """Удалить все документы из векторной базы данных"""
+        logger.warning("⚠️ [retriever_service] Удаление всех документов")
         try:
             await self.vector_search.delete_all_documents()
-            logger.warning("⚠️ [retriever_service] Все документы удалены из Qdrant")
+            logger.info("✅ [retriever_service] Все документы удалены")
         except Exception as e:
             logger.error(f"❌ [retriever_service] Ошибка при удалении всех документов: {e}")
             raise

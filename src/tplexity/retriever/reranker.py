@@ -64,12 +64,14 @@ class Reranker:
             logger.error("❌ [rerank] Модель не инициализирована")
             return [(idx, 0.0) for idx in range(min(len(documents), top_n))]
 
+        logger.info(f"🔄 [rerank] Переранжирование {len(documents)} документов для запроса: {query[:50]}...")
         try:
             # results - это список словарей с ключами: document, relevance_score, index
             results = self.model.rerank(query, documents, top_n=top_n)
 
             # Преобразуем результаты в формат (index, score)
             reranked = [(result["index"], float(result["relevance_score"])) for result in results]
+            logger.info(f"✅ [rerank] Переранжирование завершено, возвращено {len(reranked)} результатов")
             return reranked
 
         except Exception as e:

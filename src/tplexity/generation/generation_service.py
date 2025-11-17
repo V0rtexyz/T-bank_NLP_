@@ -1,19 +1,11 @@
 import logging
-import time
 from datetime import datetime
 
 import httpx
 
 from tplexity.generation.config import settings
 from tplexity.generation.memory_service import MemoryService
-from tplexity.generation.prompts import (
-    REACT_DECISION_PROMPT,
-    SHORT_ANSWER_PROMPT,
-    SYSTEM_PROMPT_SHORT_ANSWER,
-    SYSTEM_PROMPT_WITHOUT_RETRIEVER,
-    SYSTEM_PROMPT_WITH_RETRIEVER,
-    USER_PROMPT,
-)
+from tplexity.generation.prompts import SYSTEM_PROMPT, USER_PROMPT
 from tplexity.llm_client import get_llm
 
 logger = logging.getLogger(__name__)
@@ -129,54 +121,6 @@ class GenerationService:
 
         logger.info(f"✅ [generation_service] Сервис генерации инициализирован: provider={self.llm_provider}")
 
-    async def _should_use_retriever(
-        self, query: str, session_id: str | None = None, llm_provider: str | None = None
-    ) -> bool:
-        """
-        ReAct агент: решает, нужен ли retriever для ответа на запрос
-
-        Args:
-            query (str): Запрос пользователя
-            session_id (str | None): Идентификатор сессии для получения истории диалога
-            llm_provider (str | None): Провайдер LLM для принятия решения
-
-        Returns:
-            bool: True если нужен retriever, False если не нужен
-        """
-        
-        history_text = "Истории диалога нет."
-        if session_id:
-            history = await self.memory_service.get_history(session_id)
-            if history:
-                history_messages = []
-                for message in history:
-                    role = message.get("role", "unknown")
-                    content = message.get("content", "")
-                    if role == "user":
-                        history_messages.append(f"Пользователь: {content}")
-                    elif role == "assistant":
-                        history_messages.append(f"Ассистент: {content}")
-                history_text = "\n".join(history_messages) if history_messages else "Истории диалога нет."
-
-        decision_prompt = REACT_DECISION_PROMPT.format(history=history_text, query=query)
-
-        provider = llm_provider or self.llm_provider
-        llm_client = get_llm(provider)
-
-        messages = [{"role": "user", "content": decision_prompt}]
-
-        try:
-            decision = await llm_client.generate(messages, temperature=0.0, max_tokens=10)
-            decision = decision.strip().upper()
-
-            use_retriever = decision.startswith("YES")
-            return use_retriever
-        except Exception as e:
-            logger.warning(
-                f"⚠️ [generation_service] Ошибка при принятии решения ReAct агентом: {e}. Используется retriever по умолчанию."
-            )
-            return True
-
     def _build_prompt(self, query: str, context_documents: list[tuple[str, float, str, dict | None]]) -> str:
         """
         Формирует промпт с контекстом для LLM
@@ -225,7 +169,7 @@ class GenerationService:
         max_tokens: int | None = None,
         llm_provider: str | None = None,
         session_id: str | None = None,
-    ) -> tuple[str, str, list[str], list[dict | None], float | None, float, float]:
+    ) -> tuple[str, list[str], list[dict | None]]:
         """
         Генерация ответа с использованием RAG
 
@@ -239,8 +183,7 @@ class GenerationService:
             session_id: Идентификатор сессии для сохранения истории диалога (если None, история не сохраняется)
 
         Returns:
-            tuple[str, str, list[str], list[dict | None], float | None, float, float]: 
-            (подробный ответ, краткий ответ, список doc_ids, список метаданных, время поиска, время генерации, общее время)
+            tuple[str, list[str], list[dict | None]]: (ответ, список doc_ids, список метаданных)
 
         Raises:
             ValueError: Если запрос пуст
@@ -248,119 +191,108 @@ class GenerationService:
         if not query or not query.strip():
             raise ValueError("Запрос не может быть пустым")
 
-        # Начало измерения общего времени
-        total_start_time = time.time()
-
         # Если use_rerank не указан, используем True по умолчанию
         use_rerank = use_rerank if use_rerank is not None else True
 
         # Выбираем провайдер LLM (если указан в запросе, используем его, иначе используем из self)
         provider = llm_provider or self.llm_provider
-        logger.info(f"🔄 [generation_service] Генерация для запроса: '{query[:50]}...'")
-
-        # ReAct агент: решение о необходимости retriever
-        react_start_time = time.time()
-        use_retriever = await self._should_use_retriever(query, session_id, llm_provider)
-        react_time = time.time() - react_start_time
-        logger.info(f"✅ [generation_service] ReAct агент: {'использовать' if use_retriever else 'НЕ использовать'} retriever ({react_time:.2f}с)")
-
-        context_documents = []
-        search_time = None
-        if use_retriever:
-            # Получаем историю диалога для передачи в retriever (если указан session_id)
-            messages = None
-            if session_id:
-                history = await self.memory_service.get_history(session_id)
-                if history:
-                    messages = [message for message in history if message.get("role") != "system"]
-
-            # Шаг 1: Поиск релевантных документов через Retriever API
-            search_start_time = time.time()
-            context_documents = await self.retriever_client.search(
-                query=query, top_k=top_k, top_n=None, use_rerank=use_rerank, messages=messages
+        if llm_provider:
+            logger.info(
+                f"🔄 [generation_service] Получен запрос с llm_provider={llm_provider}, будет использован провайдер: {provider}"
             )
-            search_time = time.time() - search_start_time
-            logger.info(f"✅ [generation_service] Поиск завершен: {len(context_documents)} документов за {search_time:.2f}с")
-
-            if not context_documents:
-                logger.warning("⚠️ [generation_service] Релевантные документы не найдены")
-                error_message = "К сожалению, я не нашел релевантной информации в базе знаний для ответа на ваш вопрос."
-                total_time = time.time() - total_start_time
-                return (
-                    error_message,
-                    error_message,
-                    [],
-                    [],
-                    search_time,
-                    0.0,
-                    total_time,
-                )
-
-        # Шаг 2: Формирование промпта
-        if context_documents:
-            prompt = self._build_prompt(query, context_documents)
         else:
-            # Если retriever не использовался, формируем промпт без контекста
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            prompt = f"Вопрос пользователя: {query}\n\nТекущее время: {current_time}"
+            logger.info(
+                f"🔄 [generation_service] Запрос без указания llm_provider, используется провайдер по умолчанию: {provider}"
+            )
+        logger.info(f"🔄 [generation_service] Начало генерации для запроса: {query[:50]}...")
 
-        # Шаг 3: Выбираем правильный системный промпт в зависимости от использования retriever
-        system_prompt = SYSTEM_PROMPT_WITH_RETRIEVER if context_documents else SYSTEM_PROMPT_WITHOUT_RETRIEVER
-
-        # Шаг 4: Формируем список сообщений для LLM
-        # Всегда добавляем системный промпт в начале
-        messages = [{"role": "system", "content": system_prompt}]
-
-        # Получаем историю диалога из памяти (если указан session_id)
+        # Получаем историю диалога для передачи в retriever (если указан session_id)
+        messages = None
         if session_id:
             history = await self.memory_service.get_history(session_id)
             if history:
-                history_messages = [message for message in history if message.get("role") in ("user", "assistant")]
-                for message in history_messages:
-                    messages.append({"role": message.get("role"), "content": message.get("content", "")})
-                if history_messages:
-                    logger.debug(f"📚 [generation_service] Использована история: {len(history_messages)} сообщений")
+                messages = [message for message in history if message.get("role") != "system"]
 
-        # Добавляем текущий запрос пользователя
-        messages.append({"role": "user", "content": prompt})
+        # Шаг 1: Поиск релевантных документов через Retriever API
+        logger.debug(f"🔍 [generation_service] Поиск релевантных документов, top_k={top_k}, use_rerank={use_rerank}")
+        context_documents = await self.retriever_client.search(
+            query=query, top_k=top_k, top_n=top_k, use_rerank=use_rerank, messages=messages
+        )
+
+        if not context_documents:
+            logger.warning("⚠️ [generation_service] Не найдено релевантных документов")
+            return (
+                "К сожалению, я не нашел релевантной информации в базе знаний для ответа на ваш вопрос.",
+                [],
+                [],
+            )
+
+        logger.info(f"✅ [generation_service] Найдено {len(context_documents)} релевантных документов")
+
+        # Шаг 2: Формирование промпта
+        logger.debug("🔄 [generation_service] Формирование промпта с контекстом")
+        prompt = self._build_prompt(query, context_documents)
+
+        # Шаг 3: Получаем историю диалога из памяти (если указан session_id)
+        messages = []
+        if session_id:
+            history = await self.memory_service.get_history(session_id)
+            if history:
+                # Если есть история, используем её (она уже содержит системный промпт если был сохранен)
+                messages = history.copy()
+                # Добавляем текущий запрос пользователя с контекстом
+                messages.append({"role": "user", "content": prompt})
+                logger.info(f"📚 [generation_service] Использована история диалога: {len(history)} сообщений")
+            else:
+                # Если истории нет, создаем новую с системным промптом
+                messages = [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ]
+                logger.debug("📚 [generation_service] История диалога пуста, создана новая сессия")
+        else:
+            # Если session_id не указан, работаем без истории
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ]
+            logger.debug("📚 [generation_service] Работа без истории диалога (session_id не указан)")
 
         # Если указан провайдер, получаем соответствующий клиент
         if llm_provider:
+            # Используем запрошенный провайдер (даже если он совпадает с дефолтным)
             llm_client = get_llm(llm_provider)
+            logger.info(
+                f"✅ [generation_service] Использование запрошенного LLM провайдера: {llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})"
+            )
         else:
+            # Используем провайдер по умолчанию
             llm_client = self.llm_client
+            logger.info(
+                f"✅ [generation_service] Использование провайдера по умолчанию: {self.llm_provider} (модель: {llm_client.model}, base_url: {llm_client.base_url})"
+            )
 
-        generation_start_time = time.time()
-        detailed_answer = await llm_client.generate(messages, temperature=temperature, max_tokens=max_tokens)
-        detailed_generation_time = time.time() - generation_start_time
-        logger.info(f"✅ [generation_service] Подробный ответ сгенерирован за {detailed_generation_time:.2f}с (модель: {llm_client.model})")
+        logger.info(
+            f"🔄 [generation_service] Генерация ответа через LLM провайдер={llm_provider or self.llm_provider}, модель={llm_client.model}"
+        )
+        answer = await llm_client.generate(messages, temperature=temperature, max_tokens=max_tokens)
+        logger.info("✅ [generation_service] Ответ успешно сгенерирован")
 
-        # Шаг 5: Генерация краткого ответа на основе подробного
-        short_answer_start_time = time.time()
-        short_answer_prompt = SHORT_ANSWER_PROMPT.format(detailed_answer=detailed_answer)
-        # Добавляем системный промпт для генерации краткого ответа
-        short_answer_messages = [
-            {"role": "system", "content": SYSTEM_PROMPT_SHORT_ANSWER},
-            {"role": "user", "content": short_answer_prompt}
-        ]
-        short_answer = await llm_client.generate(short_answer_messages, temperature=0.3, max_tokens=500)
-        short_generation_time = time.time() - short_answer_start_time
-        generation_time = time.time() - generation_start_time
-        logger.info(f"✅ [generation_service] Генерация завершена за {generation_time:.2f}с (подробный: {detailed_generation_time:.2f}с, краткий: {short_generation_time:.2f}с)")
-
-        # Шаг 6: Сохраняем историю диалога в память (если указан session_id)
-        # Сохраняем только user и assistant сообщения, системный промпт не сохраняется
-        # Сохраняем подробный ответ в историю
+        # Шаг 4: Сохраняем историю диалога в память (если указан session_id)
         if session_id:
             try:
-                # Добавляем оригинальный запрос пользователя (без контекста документов) и подробный ответ ассистента
+                # Если история была пуста, нужно сначала сохранить системный промпт
+                if not await self.memory_service.get_history(session_id):
+                    await self.memory_service.add_message(session_id, "system", SYSTEM_PROMPT)
+
+                # Добавляем оригинальный запрос пользователя (без контекста документов) и ответ ассистента
                 # Сохраняем оригинальный query, а не prompt с контекстом, чтобы история была чище
                 await self.memory_service.add_message(session_id, "user", query)
-                await self.memory_service.add_message(session_id, "assistant", detailed_answer)
+                await self.memory_service.add_message(session_id, "assistant", answer)
 
                 # Обновляем TTL сессии
                 await self.memory_service.update_ttl(session_id)
-                logger.debug(f"💾 [generation_service] История сохранена для сессии {session_id}")
+                logger.info(f"💾 [generation_service] История диалога сохранена для сессии {session_id}")
             except Exception as e:
                 logger.error(f"❌ [generation_service] Ошибка при сохранении истории для сессии {session_id}: {e}")
                 # Продолжаем выполнение даже если сохранение не удалось
@@ -369,12 +301,7 @@ class GenerationService:
         doc_ids = [doc_id for doc_id, _, _, _ in context_documents]
         metadatas = [metadata for _, _, _, metadata in context_documents]
 
-        # Вычисляем общее время
-        total_time = time.time() - total_start_time
-        search_str = f"{search_time:.2f}с" if search_time is not None else "N/A"
-        logger.info(f"✅ [generation_service] Обработка завершена за {total_time:.2f}с (поиск: {search_str}, генерация: {generation_time:.2f}с)")
-
-        return detailed_answer, short_answer, doc_ids, metadatas, search_time, generation_time, total_time
+        return answer, doc_ids, metadatas
 
     async def clear_session(self, session_id: str) -> None:
         """
@@ -384,6 +311,7 @@ class GenerationService:
             session_id: Идентификатор сессии
         """
         await self.memory_service.clear_history(session_id)
+        logger.info(f"🗑️ [generation_service] История сессии {session_id} очищена")
 
     async def close(self) -> None:
         """Закрытие LLM клиента и сервиса памяти"""
