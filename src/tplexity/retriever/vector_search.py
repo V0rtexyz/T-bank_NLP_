@@ -98,7 +98,39 @@ class VectorSearch:
                 f"✅ [retriever][vector_search] Коллекция {self.collection_name} создана с dense и sparse векторами"
             )
         else:
-            logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} уже существует")
+            # Проверяем конфигурацию существующей коллекции
+            collection_info = await self.client.get_collection(collection_name=self.collection_name)
+            has_dense = "dense" in (collection_info.config.params.vectors or {})
+            has_sparse = "bm25" in (collection_info.config.params.sparse_vectors or {})
+            
+            if not has_dense or not has_sparse:
+                logger.warning(
+                    f"⚠️ [retriever][vector_search] Коллекция {self.collection_name} имеет неправильную конфигурацию "
+                    f"(dense: {has_dense}, sparse: {has_sparse}). Пересоздаём коллекцию..."
+                )
+                # Удаляем коллекцию и создаём заново
+                await self.client.delete_collection(collection_name=self.collection_name)
+                vectors_config = {
+                    "dense": VectorParams(
+                        size=self.embedding_dim,
+                        distance=Distance.COSINE,
+                    )
+                }
+                sparse_vectors_config = {
+                    "bm25": SparseVectorParams(
+                        modifier=Modifier.IDF,
+                    ),
+                }
+                await self.client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=vectors_config,
+                    sparse_vectors_config=sparse_vectors_config,
+                )
+                logger.info(
+                    f"✅ [retriever][vector_search] Коллекция {self.collection_name} пересоздана с dense и sparse векторами"
+                )
+            else:
+                logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} уже существует с правильной конфигурацией")
 
     async def add_documents(
         self,

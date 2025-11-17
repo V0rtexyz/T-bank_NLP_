@@ -8,13 +8,21 @@ logger = logging.getLogger(__name__)
 
 
 class RetrieverService:
-    """Класс для гибридного поиска с использованием Qdrant
+    """Класс для поиска с использованием Qdrant (Hybrid: Dense + BM25)
 
+<<<<<<< Updated upstream
     1. Prefetch
     - Sparse Embeddings: BM25 с лемматизацией
     - Dense Embeddings: ai-forever/FRIDA
     2. RRF для объединения векторов
     3. Reranking: Jina Reranker v3
+=======
+    0. Query Reformulation: Переформулирование запроса через LLM
+    1. Dense Embeddings: ai-forever/FRIDA или jinaai/jina-embeddings-v3
+    2. Sparse Embeddings: BM25 с лемматизацией
+    3. Hybrid Search: RRF (Reciprocal Rank Fusion) для комбинирования результатов
+    4. Reranking: Jina Reranker v3
+>>>>>>> Stashed changes
     """
 
     def __init__(
@@ -26,7 +34,7 @@ class RetrieverService:
         timeout: int | None = None,
     ):
         """
-        Инициализация гибридного поисковика
+        Инициализация поисковика (Hybrid: Dense Embeddings + BM25)
 
         Args:
             collection_name (str | None): Имя коллекции в Qdrant
@@ -35,7 +43,7 @@ class RetrieverService:
             api_key (str | None): API ключ для Qdrant
             timeout (int | None): Таймаут для подключения
         """
-        logger.info("🔄 [retriever_service] Инициализация гибридного поисковика")
+        logger.info("🔄 [retriever_service] Инициализация поисковика (Hybrid: Dense + BM25)")
 
         # Единая точка чтения всех параметров из config
         self._init_config_params(
@@ -56,11 +64,48 @@ class RetrieverService:
             prefetch_ratio=self.prefetch_ratio,
         )
 
+<<<<<<< Updated upstream
         # self.reranker = get_reranker()
         # logger.info(
         #     f"✅ [retriever_service] Гибридный поисковик инициализирован: "
         #     f"top_k={self.top_k}, top_n={self.top_n}, prefetch_ratio={self.prefetch_ratio}"
         # )
+=======
+        # Инициализация reranker (ленивая загрузка - только при первом использовании)
+        self._reranker = None
+
+        # Инициализация query reformulation (опционально)
+        self.enable_query_reformulation = settings.enable_query_reformulation
+        if self.enable_query_reformulation:
+            provider = settings.query_reformulation_llm_provider
+            try:
+                self.llm_client = get_llm(provider)  # type: ignore
+                logger.info(
+                    f"✅ [retriever_service] LLM клиент для переформулирования инициализирован: provider={provider}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ [retriever_service] Не удалось инициализировать LLM клиент для переформулирования: {e}. "
+                    f"Переформулирование будет отключено."
+                )
+                self.enable_query_reformulation = False
+        else:
+            self.llm_client = None
+
+        logger.info(
+            f"✅ [retriever_service] Поисковик инициализирован (Hybrid: Dense + BM25): "
+            f"top_k={self.top_k}, top_n={self.top_n}, "
+            f"query_reformulation={self.enable_query_reformulation}"
+        )
+>>>>>>> Stashed changes
+
+    @property
+    def reranker(self):
+        """Ленивая инициализация reranker - загружается только при первом использовании"""
+        if self._reranker is None:
+            logger.info("🔄 [retriever_service] Загрузка reranker (первое использование)...")
+            self._reranker = get_reranker()
+        return self._reranker
 
     def _init_config_params(
         self,
@@ -130,7 +175,11 @@ class RetrieverService:
         use_rerank: bool = True,
     ) -> list[tuple[str, float, str, dict | None]]:
         """
+<<<<<<< Updated upstream
         Гибридный поиск: BM25 + Embeddings → RRF (в Qdrant) → Rerank
+=======
+        Поиск с использованием Hybrid: Query Reformulation → Dense + BM25 (RRF) → Rerank
+>>>>>>> Stashed changes
 
         Args:
             query (str): Поисковый запрос
@@ -158,12 +207,32 @@ class RetrieverService:
 
         logger.info(f"🔍 [retriever_service] Начало поиска для запроса: {query[:50]}...")
 
+<<<<<<< Updated upstream
         logger.debug(f"🔄 [retriever_service] Выполнение гибридного поиска, top_k: {top_k}")
         hybrid_results = await self.vector_search.search(query, top_k=top_k, search_type="hybrid")
         logger.info(f"✅ [retriever_service] Гибридный поиск завершен, найдено результатов: {len(hybrid_results)}")
+=======
+        # Шаг 0: Переформулирование запроса
+        if self.enable_query_reformulation and self.llm_client:
+            search_query = await self._reformulate_query(query, messages)
+        else:
+            search_query = query
+
+        # Hybrid search: Dense + BM25 с RRF
+        logger.info(f"🔄 [retriever_service.search] Выполнение hybrid поиска (Dense + BM25 + RRF), top_k: {top_k}")
+        logger.info(f"🔄 [retriever_service.search] Вызываем vector_search.search с: query={search_query[:50]}, top_k={top_k}, search_type='hybrid'")
+        
+        try:
+            hybrid_results = await self.vector_search.search(search_query, top_k=top_k, search_type="hybrid")
+            logger.info(f"✅ [retriever_service] Hybrid поиск завершен, найдено результатов: {len(hybrid_results)}")
+        except Exception as e:
+            logger.error(f"❌ [retriever_service.search] Ошибка при hybrid поиске: {type(e).__name__}: {e}")
+            logger.error(f"❌ [retriever_service.search] Полный traceback будет выведен выше")
+            raise
+>>>>>>> Stashed changes
 
         if not hybrid_results:
-            logger.warning("⚠️ [retriever_service] Гибридный поиск не вернул результатов")
+            logger.warning("⚠️ [retriever_service] Hybrid поиск не вернул результатов")
             return []
 
         # Создаем словарь для быстрого доступа к метаданным и документам
