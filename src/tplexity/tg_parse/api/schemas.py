@@ -7,8 +7,7 @@ class StartMonitoringResponse(BaseModel):
     """Ответ на запуск мониторинга"""
 
     status: str = Field(..., description="Статус операции")
-    channels: list[str] = Field(..., description="Список каналов")
-    check_interval: int = Field(..., description="Интервал проверки")
+    channels: str = Field(..., description="Список каналов (строка через запятую)")
 
 
 class StopMonitoringResponse(BaseModel):

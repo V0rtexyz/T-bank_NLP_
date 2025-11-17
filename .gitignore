@@ -224,3 +224,5 @@ data/
 poetry.lock
 pyproject.toml
 *.session
+*.session-journal
+my_venv/
