@@ -220,7 +220,7 @@ __marimo__/
 .vscode/
 
 ./data
+data/
 poetry.lock
 pyproject.toml
-
 *.session

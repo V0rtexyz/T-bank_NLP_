@@ -3,6 +3,8 @@ from typing import Literal
 
 from sentence_transformers import SentenceTransformer
 
+from tplexity.retriever.utils import get_device
+
 logger = logging.getLogger(__name__)
 
 # Поддерживаемые prompt_name для FRIDA
@@ -42,10 +44,12 @@ class Embedding:
             model_name (str): Имя модели для загрузки
         """
         self.model_name = model_name
-        logger.info(f"🔄 [retriever][dense_embedding] Инициализация модели: {model_name}")
+        device = get_device()
+        logger.info(f"🔄 [retriever][dense_embedding] Инициализация модели: {model_name} на устройстве: {device}")
         try:
-            self.model = SentenceTransformer(model_name)
-            logger.info(f"✅ [retriever][dense_embedding] Модель {model_name} успешно инициализирована")
+            # SentenceTransformer принимает строку "cuda" или "cpu", или torch.device
+            self.model = SentenceTransformer(model_name, device=str(device))
+            logger.info(f"✅ [retriever][dense_embedding] Модель {model_name} успешно инициализирована на {device}")
         except Exception as e:
             logger.error(f"❌ [retriever][dense_embedding] Ошибка инициализации модели: {e}")
             raise

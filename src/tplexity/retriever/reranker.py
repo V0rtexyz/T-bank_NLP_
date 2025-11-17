@@ -2,6 +2,8 @@ import logging
 
 from transformers import AutoModel
 
+from tplexity.retriever.utils import get_device
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,15 +24,19 @@ class Reranker:
             model_name (str): Имя модели для reranking. По умолчанию используется jinaai/jina-reranker-v3
         """
         self.model_name = model_name
-        logger.info(f"🔄 [rerank] Загрузка модели reranker: {model_name}")
+        self.device = get_device()
+        logger.info(f"🔄 [rerank] Загрузка модели reranker: {model_name} на устройстве: {self.device}")
 
         try:
-            self.model = AutoModel.from_pretrained(
-                model_name,
-                dtype="auto",
-                trust_remote_code=True,
-            ).eval()
-            logger.info(f"✅ [rerank] Модель reranker {model_name} успешно загружена")
+            self.model = (
+                AutoModel.from_pretrained(
+                    model_name,
+                    dtype="auto",
+                    trust_remote_code=True,
+                )
+                .eval()
+                .to(self.device)
+            )
         except Exception as e:
             logger.error(f"❌ [rerank] Ошибка при загрузке модели reranker: {e}")
             raise

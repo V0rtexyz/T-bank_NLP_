@@ -1,9 +1,19 @@
 import logging
+import os
 import re
+from pathlib import Path
 
-from fastembed import SparseTextEmbedding
-from pymorphy3 import MorphAnalyzer
-from qdrant_client.models import SparseVector
+cache_dir = Path.home() / ".cache"
+if "HF_HOME" not in os.environ:
+    os.environ["HF_HOME"] = str(cache_dir / "huggingface")
+if "HUGGINGFACE_HUB_CACHE" not in os.environ:
+    os.environ["HUGGINGFACE_HUB_CACHE"] = str(cache_dir / "huggingface" / "hub")
+if "FASTEMBED_CACHE_PATH" not in os.environ:
+    os.environ["FASTEMBED_CACHE_PATH"] = str(cache_dir / "fastembed")
+
+from fastembed import SparseTextEmbedding  # noqa: E402
+from pymorphy3 import MorphAnalyzer  # noqa: E402
+from qdrant_client.models import SparseVector  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
