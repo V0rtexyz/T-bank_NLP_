@@ -58,7 +58,6 @@ class Embedding:
         self,
         texts: list[str] | str,
         prompt_name: PromptNameType = "search_query",
-        max_length: int = 512,
     ) -> list[list[float]] | list[float]:
         """
         Кодировать тексты в embeddings
@@ -73,7 +72,6 @@ class Embedding:
                 - "categorize_sentiment": для задач, связанных с сентиментом
                 - "categorize_topic": для группировки текстов по темам
                 - "categorize_entailment": для задач текстового следования (NLI)
-            max_length (int): Максимальная длина последовательности (до 512 токенов)
 
         Returns:
             list[list[float]] | list[float]: Список embeddings (или один embedding, если передан один текст)
@@ -86,7 +84,7 @@ class Embedding:
             single_text = False
 
         logger.debug(f"🔄 [retriever][dense_embedding] Кодирование {len(texts)} текстов, prompt_name: {prompt_name}")
-        embeddings = self.model.encode(texts, prompt_name=prompt_name, max_length=max_length, normalize_embeddings=True)
+        embeddings = self.model.encode(texts, prompt_name=prompt_name, normalize_embeddings=True)
 
         # Возвращаем один embedding, если был передан один текст
         if single_text:

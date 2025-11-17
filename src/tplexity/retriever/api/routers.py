@@ -45,7 +45,6 @@ async def add_documents(
 
         await retriever.add_documents(documents, metadatas=metadatas)
 
-        logger.info(f"✅ [retriever.api] Добавлено {len(documents)} документов")
         return MessageResponse(
             message=f"Успешно добавлено {len(documents)} документов",
             success=True,
@@ -93,7 +92,6 @@ async def search(
             for doc_id, score, text, metadata in results
         ]
 
-        logger.info(f"✅ [retriever.api] Поиск завершен, найдено {len(search_results)} результатов")
         return SearchResponse(
             results=search_results,
             total=len(search_results),
@@ -134,7 +132,6 @@ async def get_documents(
             for doc_id, text, metadata in results
         ]
 
-        logger.info(f"✅ [retriever.api] Получено {len(documents)} документов")
         return DocumentsResponse(
             documents=documents,
             total=len(documents),
@@ -172,7 +169,6 @@ async def get_all_documents(
             for doc_id, text, metadata in results
         ]
 
-        logger.info(f"✅ [retriever.api] Получено {len(documents)} документов")
         return DocumentsResponse(
             documents=documents,
             total=len(documents),
@@ -203,7 +199,6 @@ async def delete_documents(
     try:
         await retriever.delete_documents(request.doc_ids)
 
-        logger.info(f"✅ [retriever.api] Удалено {len(request.doc_ids)} документов")
         return MessageResponse(
             message=f"Успешно удалено {len(request.doc_ids)} документов",
             success=True,
@@ -230,7 +225,6 @@ async def delete_all_documents(retriever: RetrieverService = Depends(get_retriev
     try:
         await retriever.delete_all_documents()
 
-        logger.info("✅ [retriever.api] Все документы удалены")
         return MessageResponse(
             message="Все документы успешно удалены",
             success=True,

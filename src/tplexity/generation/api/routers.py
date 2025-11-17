@@ -40,7 +40,7 @@ async def generate(
         GenerateResponse: Сгенерированный ответ с источниками
     """
     try:
-        answer, doc_ids, metadatas = await generation.generate(
+        detailed_answer, short_answer, doc_ids, metadatas, search_time, generation_time, total_time = await generation.generate(
             query=request.query,
             top_k=request.top_k,
             use_rerank=request.use_rerank,
@@ -55,11 +55,15 @@ async def generate(
         for doc_id, metadata in zip(doc_ids, metadatas, strict=False):
             sources.append(SourceInfo(doc_id=doc_id, metadata=metadata))
 
-        logger.info(f"✅ [generation.api] Ответ успешно сгенерирован для запроса: {request.query[:50]}...")
         return GenerateResponse(
-            answer=answer,
+            answer=short_answer,  # Для обратной совместимости
+            detailed_answer=detailed_answer,
+            short_answer=short_answer,
             sources=sources,
             query=request.query,
+            search_time=search_time,
+            generation_time=generation_time,
+            total_time=total_time,
         )
     except ValueError as e:
         logger.error(f"❌ [generation.api] Ошибка валидации: {e}")
@@ -92,7 +96,6 @@ async def clear_session(
     """
     try:
         await generation.clear_session(request.session_id)
-        logger.info(f"✅ [generation.api] История сессии {request.session_id} успешно очищена")
         return ClearSessionResponse(
             success=True,
             message=f"История сессии {request.session_id} успешно очищена",

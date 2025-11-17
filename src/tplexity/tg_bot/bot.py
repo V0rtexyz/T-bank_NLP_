@@ -5,6 +5,8 @@ Telegram бот с интеграцией Generation API микросервис�
 
 import asyncio
 import logging
+import re
+import time
 
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
@@ -26,44 +28,93 @@ logger = logging.getLogger(__name__)
 
 
 def get_keyboard():
-    """Создает клавиатуру с кнопками 'Выбор модели' и 'Удалить историю из памяти'."""
+    """Создает клавиатуру с кнопками 'Очистить историю' и 'Помощь'."""
     keyboard = [
-        [KeyboardButton("Выбор модели")],
-        [KeyboardButton("Удалить историю из памяти")],
+        [KeyboardButton("🗑️ Очистить историю")],
+        [KeyboardButton("ℹ️ Помощь")],
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-
-def get_models_keyboard():
-    """Создает inline клавиатуру с доступными моделями."""
-    available_models = settings.available_models
-    keyboard = []
-
-    # Маппинг названий моделей для отображения
-    model_names = {
-        "qwen": "Qwen",
-        "yandexgpt": "YandexGPT",
-        "chatgpt": "ChatGPT",
-        "gemini": "Gemini",
-    }
-
-    # Создаем кнопки для каждой модели
-    for model in available_models:
-        display_name = model_names.get(model, model.capitalize())
-        keyboard.append([InlineKeyboardButton(display_name, callback_data=f"model_{model}")])
-
-    return InlineKeyboardMarkup(keyboard)
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 
 def get_clear_history_confirmation_keyboard():
     """Создает inline клавиатуру для подтверждения очистки истории."""
     keyboard = [
         [
-            InlineKeyboardButton("Да", callback_data="clear_history_yes"),
-            InlineKeyboardButton("Нет", callback_data="clear_history_no"),
+            InlineKeyboardButton("✅ Да, очистить", callback_data="clear_history_yes"),
+            InlineKeyboardButton("❌ Отмена", callback_data="clear_history_no"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_show_detailed_answer_keyboard(message_key: str):
+    """Создает inline клавиатуру с кнопкой для показа подробного ответа."""
+    keyboard = [
+        [InlineKeyboardButton("📖 Показать подробный ответ", callback_data=f"show_detailed_{message_key}")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_answer_actions_keyboard(message_key: str, is_detailed: bool = False):
+    """Создает inline клавиатуру с действиями для ответа."""
+    keyboard = []
+    if is_detailed:
+        keyboard.append([InlineKeyboardButton("📝 Показать краткий ответ", callback_data=f"show_short_{message_key}")])
+    else:
+        keyboard.append([InlineKeyboardButton("📖 Показать подробный ответ", callback_data=f"show_detailed_{message_key}")])
+    return InlineKeyboardMarkup(keyboard)
+
+
+
+
+def escape_html(text: str) -> str:
+    """
+    Экранирует HTML символы в тексте для безопасного использования в Telegram HTML.
+
+    Args:
+        text: Текст для экранирования
+
+    Returns:
+        str: Экранированный текст
+    """
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def markdown_to_html(text: str) -> str:
+    """
+    Преобразует Markdown форматирование в HTML для Telegram.
+    
+    Преобразования:
+    - **текст** → <b>текст</b> (жирный)
+    - *текст* → <i>текст</i> (курсив, если не внутри **)
+    - `текст` → <code>текст</code> (код)
+    
+    Args:
+        text: Текст с Markdown форматированием
+        
+    Returns:
+        str: Текст с HTML форматированием
+    """
+    if not text:
+        return text
+    
+    # Сначала обрабатываем код (обратные кавычки) - самый специфичный формат
+    text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+    
+    # Затем обрабатываем жирный текст **текст**
+    # Используем non-greedy match для корректной обработки нескольких вхождений
+    text = re.sub(r'\*\*([^*]+?)\*\*', r'<b>\1</b>', text)
+    
+    # Обрабатываем курсив *текст* (только если это не часть **)
+    # Проверяем, что перед * нет другого * и после тоже
+    text = re.sub(r'(?<!\*)\*([^*]+?)\*(?!\*)', r'<i>\1</i>', text)
+    
+    return text
 
 
 def extract_channel_name_from_link(link: str) -> str:
@@ -97,16 +148,128 @@ def extract_channel_name_from_link(link: str) -> str:
     return "канал"  # Fallback
 
 
+def extract_source_link(source: dict, idx: int) -> tuple[str | None, str | None]:
+    """
+    Извлекает ссылку и название канала из источника.
+
+    Args:
+        source: Словарь с источником (содержит metadata)
+        idx: Порядковый номер источника (для логирования)
+
+    Returns:
+        tuple[str | None, str | None]: (ссылка, название_канала) или (None, None) если не удалось извлечь
+    """
+    metadata = source.get("metadata") or {}
+
+    # Извлекаем ссылку из метаданных (приоритет 1: готовая ссылка)
+    link = metadata.get("link")
+
+    # Если нет готовой ссылки, пытаемся сформировать из channel_id и message_id
+    if not link:
+        channel_id = metadata.get("channel_id")
+        message_id = metadata.get("message_id")
+
+        if channel_id and message_id:
+            # Формируем ссылку: https://t.me/c/{channel_id}/{message_id}
+            # Для приватных каналов используется формат с channel_id
+            link = f"https://t.me/c/{channel_id}/{message_id}"
+            logger.debug(
+                f"📋 [tg_bot] extract_source_link: источник {idx} сформирован из channel_id и message_id: {link}"
+            )
+        else:
+            # Пробуем старый формат (для обратной совместимости)
+            channel_name = metadata.get("channel_name")
+            original_id = metadata.get("original_id")
+            original_link = metadata.get("original_link")
+
+            if original_link:
+                link = original_link
+                logger.debug(f"📋 [tg_bot] extract_source_link: источник {idx} использует original_link: {link}")
+            elif channel_name and original_id:
+                clean_channel = channel_name.lstrip("@")
+                link = f"https://t.me/{clean_channel}/{original_id}"
+                logger.debug(f"📋 [tg_bot] extract_source_link: источник {idx} сформирован из channel_name: {link}")
+
+    if not link:
+        logger.warning(f"⚠️ [tg_bot] Недостаточно данных для источника {idx}: metadata={metadata}")
+        return None, None
+
+    # Извлекаем название канала из ссылки
+    channel_name = extract_channel_name_from_link(link)
+    return link, channel_name
+
+
+def build_citation_map(sources: list[dict], max_sources: int = 5) -> dict[int, str]:
+    """
+    Создает маппинг номеров цитат к ссылкам источников.
+
+    Args:
+        sources: Список источников с метаданными
+        max_sources: Максимальное количество источников для обработки
+
+    Returns:
+        dict[int, str]: Словарь {номер_источника: ссылка}
+    """
+    citation_map = {}
+    top_sources = sources[:max_sources]
+
+    for idx, source in enumerate(top_sources, 1):
+        link, _ = extract_source_link(source, idx)
+        if link:
+            citation_map[idx] = link
+
+    return citation_map
+
+
+def make_citations_clickable(text: str, citation_map: dict[int, str]) -> str:
+    """
+    Заменяет цитаты [1], [2], [1][3] в тексте на кликабельные HTML ссылки.
+    Каждая цитата становится отдельной ссылкой на соответствующий источник.
+
+    Args:
+        text: Текст с цитатами
+        citation_map: Словарь {номер_источника: ссылка}
+
+    Returns:
+        str: Текст с кликабельными HTML ссылками вместо цитат
+    """
+    if not citation_map:
+        return text
+
+    # Паттерн для поиска отдельных цитат: [1], [2], [3] и т.д.
+    # Обрабатываем каждую цитату отдельно, чтобы [1][2] стало двумя отдельными ссылками
+    pattern = r'\[(\d+)\]'
+
+    def replace_citation(match):
+        citation_text = match.group(0)  # [1]
+        number = int(match.group(1))  # 1
+        
+        # Проверяем, есть ли ссылка для этого номера
+        link = citation_map.get(number)
+        
+        if link:
+            # Экранируем текст цитаты для HTML
+            citation_text_escaped = citation_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            # Экранируем ссылку для безопасности
+            link_escaped = link.replace('&', '&amp;')
+            return f'<a href="{link_escaped}">{citation_text_escaped}</a>'
+        else:
+            # Если ссылки нет, оставляем как есть
+            return citation_text
+
+    return re.sub(pattern, replace_citation, text)
+
+
 def format_sources(sources: list[dict], max_sources: int = 5) -> str:
     """
-    Форматирует источники как Telegram ссылки с названием канала вместо полной ссылки.
+    Форматирует источники для красивого отображения в Telegram.
 
     Args:
         sources: Список источников с метаданными
         max_sources: Максимальное количество источников для отображения
 
     Returns:
-        str: Отформатированная строка с источниками в формате markdown
+        str: Отформатированная строка с источниками в формате HTML
     """
     if not sources:
         logger.warning("⚠️ [tg_bot] format_sources: sources пуст")
@@ -116,73 +279,89 @@ def format_sources(sources: list[dict], max_sources: int = 5) -> str:
     top_sources = sources[:max_sources]
     logger.info(f"📋 [tg_bot] format_sources: обрабатываем {len(top_sources)} источников")
 
-    # Формируем список ссылок
-    source_links = []
+    # Формируем список источников
+    source_items = []
     for idx, source in enumerate(top_sources, 1):
-        logger.debug(f"📋 [tg_bot] format_sources: источник {idx}: {source}")
+        link, channel_name = extract_source_link(source, idx)
+        if link:
+            # Экранируем название канала для HTML
+            channel_name_escaped = escape_html(channel_name)
+            # Экранируем ссылку (в основном для символа &)
+            link_escaped = link.replace("&", "&amp;")
+            # Форматируем как HTML ссылку с нумерацией [1], [2] и т.д.
+            source_items.append(f'<b>[{idx}]</b> <a href="{link_escaped}">{channel_name_escaped}</a>')
 
-        # Источник может быть словарем с полями "doc_id" и "metadata"
-        metadata = source.get("metadata") or {}
-
-        # Логируем метаданные для отладки
-        if idx == 1:
-            logger.info(f"📋 [tg_bot] format_sources: метаданные первого источника: {metadata}")
-
-        # Извлекаем ссылку из метаданных (приоритет 1: готовая ссылка)
-        link = metadata.get("link")
-
-        # Если нет готовой ссылки, пытаемся сформировать из channel_id и message_id
-        if not link:
-            channel_id = metadata.get("channel_id")
-            message_id = metadata.get("message_id")
-
-            if channel_id and message_id:
-                # Формируем ссылку: https://t.me/c/{channel_id}/{message_id}
-                # Для приватных каналов используется формат с channel_id
-                link = f"https://t.me/c/{channel_id}/{message_id}"
-                logger.debug(
-                    f"📋 [tg_bot] format_sources: источник {idx} сформирован из channel_id и message_id: {link}"
-                )
-            else:
-                # Пробуем старый формат (для обратной совместимости)
-                channel_name = metadata.get("channel_name")
-                original_id = metadata.get("original_id")
-                original_link = metadata.get("original_link")
-
-                if original_link:
-                    link = original_link
-                    logger.debug(f"📋 [tg_bot] format_sources: источник {idx} использует original_link: {link}")
-                elif channel_name and original_id:
-                    clean_channel = channel_name.lstrip("@")
-                    link = f"https://t.me/{clean_channel}/{original_id}"
-                    logger.debug(f"📋 [tg_bot] format_sources: источник {idx} сформирован из channel_name: {link}")
-
-        if not link:
-            # Если не удалось получить ссылку, пропускаем
-            logger.warning(f"⚠️ [tg_bot] Недостаточно данных для источника {idx}: metadata={metadata}")
-            continue
-
-        # Извлекаем название канала из ссылки
-        channel_name = extract_channel_name_from_link(link)
-
-        # Форматируем как кликабельную ссылку в Telegram markdown: [текст](ссылка)
-        # Экранируем специальные символы в ссылке для markdown
-        escaped_link = link.replace("(", "\\(").replace(")", "\\)")
-        source_links.append(f"топ-{idx} источник: [{channel_name}]({escaped_link})")
-
-    if not source_links:
+    if not source_items:
         logger.warning("⚠️ [tg_bot] format_sources: не удалось сформировать ни одной ссылки")
         return ""
 
-    # Формируем итоговую строку
-    sources_text = "Источники:\n" + "\n".join(source_links)
-    logger.info(f"📋 [tg_bot] format_sources: сформирован текст с {len(source_links)} источниками")
+    # Формируем итоговую строку с красивым форматированием
+    sources_text = "📚 <b>Источники:</b>\n" + "\n".join(source_items)
+    logger.info(f"📋 [tg_bot] format_sources: сформирован текст с {len(source_items)} источниками")
     return sources_text
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик команды /start."""
-    await update.message.reply_text("start message", reply_markup=get_keyboard())
+    welcome_message = """
+🟨 <b>Добро пожаловать в T-Plexity!</b>
+
+⬛ <b>Интеллектуальная система для работы с инвестиционными новостями</b>
+
+Я отслеживаю в реальном времени публикации из проверенных инвестиционных Telegram-каналов и даю точные, контекстные ответы на ваши вопросы о рынках и новостях.
+
+<b>Что я умею:</b>
+📊 Отвечать на вопросы о финансовых рынках и новостях
+⚡ Работать на самых актуальных данных (минимальная задержка)
+📚 Показывать источники — каждый ответ с ссылками на конкретные сообщения из каналов
+💡 Давать краткие и точные ответы с рыночным контекстом
+
+<b>Как пользоваться:</b>
+Просто напишите ваш вопрос о рынках или новостях, и я найду актуальную информацию!
+
+Используйте кнопки меню для управления настройками.
+    """
+    await update.message.reply_text(
+        welcome_message, 
+        reply_markup=get_keyboard(),
+        parse_mode="HTML"
+    )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик команды /help."""
+    help_text = """
+ℹ️ <b>Справка по использованию T-Plexity</b>
+
+<b>О системе:</b>
+T-Plexity — интеллектуальная система, которая в реальном времени отслеживает и агрегирует свежие публикации из проверенных инвестиционных Telegram-каналов. Система работает на самых актуальных данных с минимальной задержкой.
+
+<b>Источники информации:</b>
+• Только инвестиционные Telegram-каналы, отобранные по качеству и надежности
+• Каждый ответ сопровождается ссылками на первоисточники (конкретные сообщения из каналов)
+
+<b>Как использовать:</b>
+Просто напишите вопрос о рынках или новостях — я найду актуальную информацию и дам краткий, точный ответ с рыночным контекстом.
+
+<b>Доступные команды:</b>
+/start — Перезапустить бота
+/help — Показать эту справку
+
+<b>Кнопки меню:</b>
+🗑️ Очистить историю — удалить контекст диалога
+ℹ️ Помощь — показать эту справку
+
+<b>Особенности:</b>
+• Ответы могут быть краткими или подробными
+• Источники отображаются под каждым ответом с прямыми ссылками
+• История диалога сохраняется для контекста
+• Актуальность данных — минимальная задержка между публикацией и возможностью ответить
+    """
+    await update.message.reply_text(
+        help_text,
+        reply_markup=get_keyboard(),
+        parse_mode="HTML"
+    )
 
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -190,31 +369,49 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_message = update.message.text
     logger.info(f"Получено сообщение от {update.effective_user.username}: {user_message}")
 
-    # Если пользователь нажал кнопку "Выбор модели"
-    if user_message == "Выбор модели":
-        # Получаем текущую выбранную модель
-        user_data = context.user_data
-        current_model = user_data.get("selected_model")
-
-        message_text = "Выберите модель для генерации ответов:"
-        if current_model:
-            model_names = {
-                "qwen": "Qwen",
-                "yandexgpt": "YandexGPT",
-                "chatgpt": "ChatGPT",
-                "gemini": "Gemini",
-            }
-            current_name = model_names.get(current_model, current_model.capitalize())
-            message_text += f"\n\nТекущая модель: {current_name}"
-
-        await update.message.reply_text(message_text, reply_markup=get_models_keyboard())
+    # Если пользователь нажал кнопку "Очистить историю"
+    if user_message == "🗑️ Очистить историю" or user_message == "Удалить историю из памяти":
+        await update.message.reply_text(
+            "⚠️ <b>Вы уверены, что хотите очистить историю диалога?</b>\n\n"
+            "Все контекстные данные будут удалены, и диалог начнется заново.",
+            reply_markup=get_clear_history_confirmation_keyboard(),
+            parse_mode="HTML"
+        )
         return
 
-    # Если пользователь нажал кнопку "Удалить историю из памяти"
-    if user_message == "Удалить историю из памяти":
+    # Если пользователь нажал кнопку "Помощь"
+    if user_message == "ℹ️ Помощь" or user_message == "Помощь":
+        help_text = """
+ℹ️ <b>Справка по использованию T-Plexity</b>
+
+<b>О системе:</b>
+T-Plexity — интеллектуальная система, которая в реальном времени отслеживает и агрегирует свежие публикации из проверенных инвестиционных Telegram-каналов. Система работает на самых актуальных данных с минимальной задержкой.
+
+<b>Источники информации:</b>
+• Только инвестиционные Telegram-каналы, отобранные по качеству и надежности
+• Каждый ответ сопровождается ссылками на первоисточники (конкретные сообщения из каналов)
+
+<b>Как использовать:</b>
+Просто напишите вопрос о рынках или новостях — я найду актуальную информацию и дам краткий, точный ответ с рыночным контекстом.
+
+<b>Доступные команды:</b>
+/start — Перезапустить бота
+/help — Показать эту справку
+
+<b>Кнопки меню:</b>
+🗑️ Очистить историю — удалить контекст диалога
+ℹ️ Помощь — показать эту справку
+
+<b>Особенности:</b>
+• Ответы могут быть краткими или подробными
+• Источники отображаются под каждым ответом с прямыми ссылками
+• История диалога сохраняется для контекста
+• Актуальность данных — минимальная задержка между публикацией и возможностью ответить
+        """
         await update.message.reply_text(
-            "Вы уверены что хотите сбросить память?",
-            reply_markup=get_clear_history_confirmation_keyboard(),
+            help_text,
+            reply_markup=get_keyboard(),
+            parse_mode="HTML"
         )
         return
 
@@ -223,20 +420,17 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if not generation_client:
         await update.message.reply_text(
-            "Ошибка: сервис генерации недоступен. Пожалуйста, попробуйте позже.", reply_markup=get_keyboard()
+            "❌ <b>Ошибка:</b> Сервис генерации недоступен.\n\n"
+            "Пожалуйста, попробуйте позже или обратитесь к администратору.",
+            reply_markup=get_keyboard(),
+            parse_mode="HTML"
         )
         logger.error("Generation client not found in bot_data")
         return
 
-    # Получаем выбранную модель из user_data
-    user_data = context.user_data
-    selected_model = user_data.get("selected_model")
-
-    # Логируем выбранную модель
-    if selected_model:
-        logger.info(f"📌 [tg_bot] Использование выбранной модели: {selected_model}")
-    else:
-        logger.info("📌 [tg_bot] Модель не выбрана, будет использована модель по умолчанию из generation config")
+    # Используем yandexgpt как модель по умолчанию
+    selected_model = "yandexgpt"
+    logger.info(f"📌 [tg_bot] Использование модели: {selected_model}")
 
     # Показываем индикатор печати
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -247,9 +441,17 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         session_id = f"tg:{user_id}"
 
         # Отправляем запрос в Generation API с выбранной моделью и session_id
-        answer, sources = await generation_client.send_message(
+        detailed_answer, short_answer, sources, search_time, generation_time, total_time = await generation_client.send_message(
             user_message, llm_provider=selected_model, session_id=session_id
         )
+
+        # Форматируем детали генерации
+        timing_info_parts = []
+        if search_time is not None:
+            timing_info_parts.append(f"🔍 <b>Поиск информации:</b> {search_time:.2f} с")
+        timing_info_parts.append(f"✨ <b>Генерация ответа:</b> {generation_time:.2f} с")
+        timing_info_parts.append(f"⏱️ <b>Общее время:</b> {total_time:.2f} с")
+        timing_info = "\n".join(timing_info_parts)
 
         # Логируем полученные источники для отладки
         logger.info(f"📋 [tg_bot] Получено источников: {len(sources)}")
@@ -259,59 +461,156 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Форматируем источники
         sources_text = format_sources(sources, max_sources=5)
 
+        # Создаем маппинг цитат для кликабельных ссылок
+        citation_map = build_citation_map(sources, max_sources=5)
+
+        # Преобразуем Markdown в HTML (если LLM вернул Markdown)
+        short_answer_html = markdown_to_html(short_answer)
+        detailed_answer_html = markdown_to_html(detailed_answer)
+        
+        # Делаем цитаты кликабельными в ответах
+        short_answer_with_citations = make_citations_clickable(short_answer_html, citation_map)
+        detailed_answer_with_citations = make_citations_clickable(detailed_answer_html, citation_map)
+
+        # Формируем подробный ответ с источниками и временем генерации
+        # Источники отображаются до времени генерации
+        if sources_text:
+            detailed_answer_with_timing = f"{detailed_answer_with_citations}\n\n{sources_text}\n\n{timing_info}"
+        else:
+            detailed_answer_with_timing = f"{detailed_answer_with_citations}\n\n{timing_info}"
+
         logger.info(
             f"📋 [tg_bot] Отформатированный текст источников: {sources_text[:100] if sources_text else 'пусто'}..."
         )
 
-        # Объединяем ответ и источники
+        # Объединяем краткий ответ и источники (источники до времени генерации)
         if sources_text:
-            response_text = f"{answer}\n\n{sources_text}"
-            # Используем Markdown для форматирования ссылок и отключаем предпросмотр
-            await update.message.reply_text(
-                response_text, reply_markup=get_keyboard(), parse_mode="Markdown", disable_web_page_preview=True
+            response_text = f"{short_answer_with_citations}\n\n{sources_text}"
+            sent_message = await update.message.reply_text(
+                response_text,
+                reply_markup=None,  # Кнопку добавим после отправки
+                disable_web_page_preview=True,
+                parse_mode="HTML"
             )
         else:
-            response_text = answer
+            response_text = short_answer_with_citations
             logger.warning("⚠️ [tg_bot] Источники не были добавлены к ответу")
-            # Отправляем ответ без markdown, если нет источников
-            await update.message.reply_text(response_text, reply_markup=get_keyboard())
+            sent_message = await update.message.reply_text(
+                response_text, 
+                reply_markup=None,
+                parse_mode="HTML"
+            )
+
+        # Сохраняем подробный и краткий ответы в user_data для последующего использования
+        # Используем chat_id и message_id для уникального ключа
+        chat_id = update.effective_chat.id
+        message_id = sent_message.message_id
+        message_key = f"{chat_id}_{message_id}"
+        context.user_data[message_key] = detailed_answer_with_timing
+        context.user_data[f"{message_key}_short"] = short_answer_with_citations
+        context.user_data[f"{message_key}_sources"] = sources_text
+        context.user_data[f"{message_key}_citation_map"] = citation_map  # Сохраняем маппинг для последующего использования
+
+        # Редактируем сообщение, добавляя кнопку
+        await sent_message.edit_reply_markup(
+            reply_markup=get_answer_actions_keyboard(message_key, is_detailed=False)
+        )
 
     except Exception as e:
         logger.error(f"Ошибка при обработке сообщения: {e}", exc_info=True)
         await update.message.reply_text(
-            f"Произошла ошибка при обработке вашего сообщения: {str(e)}", reply_markup=get_keyboard()
+            f"❌ <b>Произошла ошибка</b>\n\n"
+            f"Не удалось обработать ваше сообщение.\n\n"
+            f"<i>Детали: {str(e)}</i>\n\n"
+            f"Пожалуйста, попробуйте еще раз или обратитесь к администратору.",
+            reply_markup=get_keyboard(),
+            parse_mode="HTML"
         )
 
 
-async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработчик выбора модели через inline кнопки."""
+async def show_detailed_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик показа подробного ответа через inline кнопки."""
     query = update.callback_query
 
-    # Отвечаем на callback query, чтобы убрать индикатор загрузки
+    # Отвечаем на callback query
     await query.answer()
 
-    # Извлекаем название модели из callback_data (формат: "model_qwen")
-    if query.data and query.data.startswith("model_"):
-        model = query.data.replace("model_", "")
+    if query.data and query.data.startswith("show_detailed_"):
+        message_key = query.data.replace("show_detailed_", "")
+        detailed_answer = context.user_data.get(message_key)
+        sources_text = context.user_data.get(f"{message_key}_sources", "")
 
-        # Сохраняем выбранную модель в user_data
-        context.user_data["selected_model"] = model
+        if not detailed_answer:
+            await query.edit_message_text(
+                "❌ <b>Ошибка</b>\n\nК сожалению, подробный ответ недоступен.",
+                reply_markup=None,
+                parse_mode="HTML"
+            )
+            logger.warning(f"⚠️ [tg_bot] Подробный ответ не найден для ключа: {message_key}")
+            return
 
-        # Маппинг названий моделей для отображения
-        model_names = {
-            "qwen": "Qwen",
-            "yandexgpt": "YandexGPT",
-            "chatgpt": "ChatGPT",
-            "gemini": "Gemini",
-        }
+        # Формируем новый текст с подробным ответом
+        # detailed_answer уже содержит источники и время генерации, но нужно убедиться, что источники отображаются правильно
+        if sources_text:
+            # Если в detailed_answer уже есть источники, не дублируем их
+            # Просто используем сохраненный ответ как есть
+            new_text = detailed_answer
+        else:
+            new_text = detailed_answer
 
-        display_name = model_names.get(model, model.capitalize())
-        await query.edit_message_text(
-            f"✅ Модель {display_name} выбрана и будет использоваться для генерации ответов.", reply_markup=None
-        )
-        logger.info(f"Пользователь {update.effective_user.username} выбрал модель: {model}")
-    else:
-        await query.edit_message_text("Ошибка при выборе модели.", reply_markup=None)
+        # Заменяем сообщение на подробный ответ с кнопкой возврата
+        try:
+            await query.edit_message_text(
+                new_text,
+                reply_markup=get_answer_actions_keyboard(message_key, is_detailed=True),
+                disable_web_page_preview=True if sources_text else None,
+                parse_mode="HTML"
+            )
+            logger.info(f"✅ [tg_bot] Подробный ответ показан для пользователя {update.effective_user.username}")
+        except Exception as e:
+            logger.error(f"❌ [tg_bot] Ошибка при замене сообщения: {e}")
+            await query.answer("❌ Ошибка при отображении подробного ответа.", show_alert=True)
+
+
+async def show_short_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик показа краткого ответа через inline кнопки."""
+    query = update.callback_query
+
+    # Отвечаем на callback query
+    await query.answer()
+
+    if query.data and query.data.startswith("show_short_"):
+        message_key = query.data.replace("show_short_", "")
+        short_answer = context.user_data.get(f"{message_key}_short")
+        sources_text = context.user_data.get(f"{message_key}_sources", "")
+
+        if not short_answer:
+            await query.edit_message_text(
+                "❌ <b>Ошибка</b>\n\nК сожалению, краткий ответ недоступен.",
+                reply_markup=None,
+                parse_mode="HTML"
+            )
+            logger.warning(f"⚠️ [tg_bot] Краткий ответ не найден для ключа: {message_key}")
+            return
+
+        # Формируем новый текст с кратким ответом и источниками (источники до времени генерации)
+        if sources_text:
+            new_text = f"{short_answer}\n\n{sources_text}"
+        else:
+            new_text = short_answer
+
+        # Заменяем сообщение на краткий ответ с кнопкой показа подробного
+        try:
+            await query.edit_message_text(
+                new_text,
+                reply_markup=get_answer_actions_keyboard(message_key, is_detailed=False),
+                disable_web_page_preview=True if sources_text else None,
+                parse_mode="HTML"
+            )
+            logger.info(f"✅ [tg_bot] Краткий ответ показан для пользователя {update.effective_user.username}")
+        except Exception as e:
+            logger.error(f"❌ [tg_bot] Ошибка при замене сообщения: {e}")
+            await query.answer("❌ Ошибка при отображении краткого ответа.", show_alert=True)
 
 
 async def clear_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -327,7 +626,9 @@ async def clear_history_callback(update: Update, context: ContextTypes.DEFAULT_T
 
         if not generation_client:
             await query.edit_message_text(
-                "Ошибка: сервис генерации недоступен. Пожалуйста, попробуйте позже.", reply_markup=None
+                "❌ <b>Ошибка</b>\n\nСервис генерации недоступен. Пожалуйста, попробуйте позже.",
+                reply_markup=None,
+                parse_mode="HTML"
             )
             logger.error("Generation client not found in bot_data")
             return
@@ -339,14 +640,27 @@ async def clear_history_callback(update: Update, context: ContextTypes.DEFAULT_T
         try:
             # Очищаем историю
             await generation_client.clear_session(session_id)
-            await query.edit_message_text("✅ История диалога успешно очищена.", reply_markup=None)
+            await query.edit_message_text(
+                "✅ <b>История очищена!</b>\n\n"
+                "Все данные диалога удалены. Вы можете начать новый диалог.",
+                reply_markup=None,
+                parse_mode="HTML"
+            )
             logger.info(f"Пользователь {update.effective_user.username} очистил историю диалога")
         except Exception as e:
             logger.error(f"Ошибка при очистке истории: {e}", exc_info=True)
-            await query.edit_message_text(f"Произошла ошибка при очистке истории: {str(e)}", reply_markup=None)
+            await query.edit_message_text(
+                f"❌ <b>Ошибка при очистке истории</b>\n\n<i>{str(e)}</i>",
+                reply_markup=None,
+                parse_mode="HTML"
+            )
 
     elif query.data == "clear_history_no":
-        await query.edit_message_text("Очистка истории отменена.", reply_markup=None)
+        await query.edit_message_text(
+            "⬛ <b>Очистка отменена</b>\n\nИстория диалога сохранена.",
+            reply_markup=None,
+            parse_mode="HTML"
+        )
         logger.info(f"Пользователь {update.effective_user.username} отменил очистку истории")
 
 
@@ -378,11 +692,13 @@ async def main() -> None:
     # Сохраняем клиент Generation API в bot_data для доступа из обработчиков
     application.bot_data["generation_client"] = generation_client
 
-    # Регистрируем обработчик команды /start
+    # Регистрируем обработчики команд
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
 
     # Регистрируем обработчик для callback query (нажатие на inline кнопки)
-    application.add_handler(CallbackQueryHandler(model_callback, pattern="^model_"))
+    application.add_handler(CallbackQueryHandler(show_detailed_answer_callback, pattern="^show_detailed_"))
+    application.add_handler(CallbackQueryHandler(show_short_answer_callback, pattern="^show_short_"))
     application.add_handler(CallbackQueryHandler(clear_history_callback, pattern="^clear_history_"))
 
     # Регистрируем обработчик для всех текстовых сообщений
@@ -395,9 +711,10 @@ async def main() -> None:
             await application.initialize()
             await application.start()
 
-            # Очищаем команды меню и устанавливаем только /start
+            # Устанавливаем команды меню
             commands = [
-                BotCommand("start", "Запустить бота"),
+                BotCommand("start", "🟨 Запустить бота"),
+                BotCommand("help", "ℹ️ Показать справку"),
             ]
             await application.bot.set_my_commands(commands)
 
@@ -425,11 +742,13 @@ def register_handlers(application: Application) -> None:
     Args:
         application: Экземпляр Telegram Application
     """
-    # Регистрируем обработчик команды /start
+    # Регистрируем обработчики команд
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
 
     # Регистрируем обработчик для callback query (нажатие на inline кнопки)
-    application.add_handler(CallbackQueryHandler(model_callback, pattern="^model_"))
+    application.add_handler(CallbackQueryHandler(show_detailed_answer_callback, pattern="^show_detailed_"))
+    application.add_handler(CallbackQueryHandler(show_short_answer_callback, pattern="^show_short_"))
     application.add_handler(CallbackQueryHandler(clear_history_callback, pattern="^clear_history_"))
 
     # Регистрируем обработчик для всех текстовых сообщений
@@ -452,7 +771,8 @@ async def start_polling(application: Application) -> None:
 
         # Устанавливаем команды меню
         commands = [
-            BotCommand("start", "Запустить бота"),
+            BotCommand("start", "🟡 Запустить бота"),
+            BotCommand("help", "ℹ️ Показать справку"),
         ]
         await application.bot.set_my_commands(commands)
 

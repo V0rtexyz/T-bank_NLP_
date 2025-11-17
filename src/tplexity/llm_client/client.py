@@ -37,8 +37,6 @@ class LLMClient:
         self.base_url = base_url
         self.timeout = timeout
 
-        logger.info(f"🔄 [llm_client] Инициализация LLM клиента: model={model}, base_url={base_url}")
-
         self.client = AsyncOpenAI(
             base_url=self.base_url,
             api_key=self.api_key,
@@ -46,7 +44,7 @@ class LLMClient:
             **kwargs,
         )
 
-        logger.info("✅ [llm_client] LLM клиент инициализирован")
+        logger.info(f"✅ [llm_client] LLM клиент инициализирован: model={model}, base_url={base_url}")
 
     async def generate(
         self,
@@ -75,8 +73,6 @@ class LLMClient:
         temperature = temperature or settings.temperature
         max_tokens = max_tokens or settings.max_tokens
 
-        logger.info(f"🔄 [llm_client] Отправка запроса к LLM: model={self.model}, base_url={self.base_url}")
-
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
@@ -86,8 +82,7 @@ class LLMClient:
             )
 
             answer = response.choices[0].message.content
-
-            logger.info(f"✅ [llm_client] Ответ получен от LLM (model={self.model})")
+            logger.debug(f"✅ [llm_client] Ответ получен от LLM (model={self.model})")
             return answer
         except Exception as e:
             logger.error(f"❌ [llm_client] Ошибка при вызове LLM: {e}")
