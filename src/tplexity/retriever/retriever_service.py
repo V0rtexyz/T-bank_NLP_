@@ -191,7 +191,8 @@ class RetrieverService:
                     ),
                 }
             ]
-            reformulated_query = await self.llm_client.generate(messages, temperature=0.0, max_tokens=200)
+            reformulated_query = await self.llm_client.generate(messages, temperature=0.0, max_tokens=200, deterministic=True)
+            
             reformulated_query = reformulated_query.strip()
 
             logger.info(

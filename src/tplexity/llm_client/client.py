@@ -1,3 +1,4 @@
+import json
 import logging
 
 from openai import AsyncOpenAI
@@ -53,6 +54,7 @@ class LLMClient:
         messages: list[dict[str, str]],
         temperature: float | None = None,
         max_tokens: int | None = None,
+        deterministic: bool = False,
     ) -> str:
         """
         Генерация ответа через LLM
@@ -65,6 +67,7 @@ class LLMClient:
                 ]
             temperature (float | None): Температура генерации (если None, используется из settings.llm.temperature)
             max_tokens (int | None): Максимальное количество токенов (если None, используется из settings.llm.max_tokens)
+            deterministic (bool): Если True, добавляет seed и top_p=1.0 для детерминированной генерации (по умолчанию False)
 
         Returns:
             str: Сгенерированный ответ
@@ -72,22 +75,49 @@ class LLMClient:
         Raises:
             Exception: При ошибке вызова LLM API
         """
-        temperature = temperature or settings.temperature
-        max_tokens = max_tokens or settings.max_tokens
+        temperature = temperature if temperature is not None else settings.temperature
+        max_tokens = max_tokens if max_tokens is not None else settings.max_tokens
 
-        logger.info(f"🔄 [llm_client] Отправка запроса к LLM: model={self.model}, base_url={self.base_url}")
+        if deterministic:
+            logger.info(
+                f"🔄 [llm_client] Отправка запроса к LLM (детерминированный режим): "
+                f"model={self.model}, base_url={self.base_url}, temperature={temperature}, "
+                f"max_tokens={max_tokens}, seed=42, top_p=1.0, do_sample=False"
+            )
+        else:
+            logger.info(
+                f"🔄 [llm_client] Отправка запроса к LLM: "
+                f"model={self.model}, base_url={self.base_url}, temperature={temperature}, max_tokens={max_tokens}"
+            )
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            # Формируем параметры запроса
+            request_kwargs = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            
+            # Если запрошена детерминированная генерация, добавляем параметры для обеспечения детерминированности
+            # 1. seed - фиксирует начальное состояние генератора случайных чисел
+            # 2. top_p=1.0 - отключает nucleus sampling, используя все токены
+            # 3. Передаем do_sample=False через extra_body (если поддерживается TGI)
+            # Это особенно важно для HuggingFace TGI, который может требовать эти параметры
+            # Используется только для переформулировки запросов, где нужна полная детерминированность
+            if deterministic:
+                request_kwargs["seed"] = 42
+                request_kwargs["top_p"] = 1.0  # Отключает nucleus sampling для детерминированности
+                # extra_body позволяет передать дополнительные параметры, специфичные для TGI
+                # Передаем do_sample=False для полной детерминированности
+                request_kwargs["extra_body"] = {"do_sample": False}
+            
+            response = await self.client.chat.completions.create(**request_kwargs)
+            
 
             answer = response.choices[0].message.content
 
-            logger.info(f"✅ [llm_client] Ответ получен от LLM (model={self.model})")
+            logger.info(f"✅ [llm_client] Ответ получен от LLM (model={self.model}), длина ответа: {len(answer) if answer else 0} символов")
             return answer
         except Exception as e:
             logger.error(f"❌ [llm_client] Ошибка при вызове LLM: {e}")
