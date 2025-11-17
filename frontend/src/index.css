@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  
+  body {
+    @apply bg-tbank-black text-white font-sans;
+  }
+  
+  * {
+    @apply scroll-smooth;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-tbank-yellow text-tbank-black font-bold px-6 py-3 rounded-xl hover:bg-tbank-yellow-dark transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-tbank;
+  }
+  
+  .btn-secondary {
+    @apply bg-tbank-black-light text-white font-semibold px-6 py-3 rounded-xl hover:bg-tbank-gray-dark transition-all duration-200 border border-tbank-gray-dark;
+  }
+  
+  .card {
+    @apply bg-tbank-black-light rounded-2xl p-6 shadow-lg border border-tbank-gray-dark hover:border-tbank-yellow/30 transition-all duration-200;
+  }
+  
+  .input-field {
+    @apply w-full bg-tbank-black-light border border-tbank-gray-dark rounded-xl px-4 py-3 text-white placeholder-tbank-gray focus:outline-none focus:border-tbank-yellow focus:ring-2 focus:ring-tbank-yellow/20 transition-all;
+  }
+  
+  .link-hover {
+    @apply hover:text-tbank-yellow transition-colors duration-150;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1F1F1F;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #FFDD2D;
+}
+
+/* Loading animation */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.loading-shimmer {
+  animation: shimmer 2s infinite;
+  background: linear-gradient(to right, #2A2A2A 4%, #424242 25%, #2A2A2A 36%);
+  background-size: 1000px 100%;
+}
+
