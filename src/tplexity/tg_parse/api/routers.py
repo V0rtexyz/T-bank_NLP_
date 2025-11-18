@@ -1,5 +1,3 @@
-"""Роутеры для Telegram Monitor микросервиса"""
-
 import logging
 from datetime import UTC, datetime
 
@@ -110,7 +108,7 @@ async def start_monitoring(
     is_monitoring = get_monitoring_status()
 
     if is_monitoring:
-        logger.warning("⚠️ [tg_parse.api] Мониторинг уже запущен")
+        logger.warning("⚠️ [tg_parse][routers] Мониторинг уже запущен")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Мониторинг уже запущен",
@@ -119,14 +117,14 @@ async def start_monitoring(
     channels_list = config.get_channels_list() if config else []
 
     if not config or not channels_list:
-        logger.error("❌ [tg_parse.api] Конфигурация не загружена или список каналов пуст")
+        logger.error("❌ [tg_parse][routers] Конфигурация не загружена или список каналов пуст")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Конфигурация не загружена или список каналов пуст",
         )
 
     if not config.api_id or not config.api_hash:
-        logger.error("❌ [tg_parse.api] Не указаны api_id или api_hash в конфигурации")
+        logger.error("❌ [tg_parse][routers] Не указаны api_id или api_hash в конфигурации")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Не указаны api_id или api_hash в конфигурации",
@@ -149,19 +147,19 @@ async def start_monitoring(
         background_tasks.add_task(service.start_monitoring)
         set_monitoring_status(True)
 
-        logger.info(f"✅ [tg_parse.api] Мониторинг запущен для каналов: {channels_list}")
+        logger.info(f"✅ [tg_parse][routers] Мониторинг запущен для каналов: {channels_list}")
         return StartMonitoringResponse(
             status="started",
             channels=config.channels,
         )
     except ValueError as e:
-        logger.error(f"❌ [tg_parse.api] Ошибка валидации: {e}")
+        logger.error(f"❌ [tg_parse][routers] Ошибка валидации: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"❌ [tg_parse.api] Ошибка при запуске мониторинга: {e}", exc_info=True)
+        logger.error(f"❌ [tg_parse][routers] Ошибка при запуске мониторинга: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при запуске мониторинга: {str(e)}",
@@ -183,7 +181,7 @@ async def stop_monitoring() -> StopMonitoringResponse:
     service = get_service()
 
     if not is_monitoring or not service:
-        logger.warning("⚠️ [tg_parse.api] Мониторинг не запущен")
+        logger.warning("⚠️ [tg_parse][routers] Мониторинг не запущен")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Мониторинг не запущен",
@@ -193,10 +191,10 @@ async def stop_monitoring() -> StopMonitoringResponse:
         await service.stop_monitoring()
         reset_service()
 
-        logger.info("✅ [tg_parse.api] Мониторинг остановлен")
+        logger.info("✅ [tg_parse][routers] Мониторинг остановлен")
         return StopMonitoringResponse(status="stopped")
     except Exception as e:
-        logger.error(f"❌ [tg_parse.api] Ошибка при остановке мониторинга: {e}", exc_info=True)
+        logger.error(f"❌ [tg_parse][routers] Ошибка при остановке мониторинга: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при остановке мониторинга: {str(e)}",
@@ -229,14 +227,14 @@ async def download_messages(
     channels_list = config.get_channels_list() if config else []
 
     if not config or not channels_list:
-        logger.error("❌ [tg_parse.api] Конфигурация не загружена или список каналов пуст")
+        logger.error("❌ [tg_parse][routers] Конфигурация не загружена или список каналов пуст")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Конфигурация не загружена или список каналов пуст",
         )
 
     if not config.api_id or not config.api_hash:
-        logger.error("❌ [tg_parse.api] Не указаны api_id или api_hash в конфигурации")
+        logger.error("❌ [tg_parse][routers] Не указаны api_id или api_hash в конфигурации")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Не указаны api_id или api_hash в конфигурации",
@@ -263,7 +261,7 @@ async def download_messages(
         results = await service.download_initial_messages()
 
         logger.info(
-            f"✅ [tg_parse.api] Скачивание завершено: "
+            f"✅ [tg_parse][routers] Скачивание завершено: "
             f"скачано {results['total_downloaded']}, сохранено {results['total_saved']}"
         )
         return DownloadMessagesResponse(
@@ -273,13 +271,13 @@ async def download_messages(
         )
 
     except ValueError as e:
-        logger.error(f"❌ [tg_parse.api] Ошибка валидации: {e}")
+        logger.error(f"❌ [tg_parse][routers] Ошибка валидации: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"❌ [tg_parse.api] Ошибка при скачивании: {e}", exc_info=True)
+        logger.error(f"❌ [tg_parse][routers] Ошибка при скачивании: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при скачивании: {str(e)}",

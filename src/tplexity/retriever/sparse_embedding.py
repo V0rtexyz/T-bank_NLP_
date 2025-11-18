@@ -29,19 +29,19 @@ class BM25:
         """
         self.model_name = model_name
 
-        logger.info(f"🔄 [bm25] Инициализация BM25 модели: {model_name}")
+        logger.info(f"🔄 [retriever][sparse_embedding] Инициализация BM25 модели: {model_name}")
         try:
             self.sparse_model = SparseTextEmbedding(model_name=model_name)
-            logger.info(f"✅ [bm25] Sparse модель (BM25) инициализирована: {model_name}")
+            logger.info(f"✅ [retriever][sparse_embedding] Sparse модель (BM25) инициализирована: {model_name}")
         except Exception as e:
-            logger.error(f"❌ [bm25] Ошибка инициализации sparse модели: {e}")
+            logger.error(f"❌ [retriever][sparse_embedding] Ошибка инициализации sparse модели: {e}")
             raise
 
         try:
             self.morph = MorphAnalyzer()
-            logger.info("✅ [bm25] Лемматизатор (pymorphy3) инициализирован для BM25")
+            logger.info("✅ [retriever][sparse_embedding] Лемматизатор (pymorphy3) инициализирован для BM25")
         except Exception as e:
-            logger.warning(f"⚠️ [bm25] Не удалось инициализировать лемматизатор: {e}")
+            logger.warning(f"⚠️ [retriever][sparse_embedding] Не удалось инициализировать лемматизатор: {e}")
             self.morph = None
 
     def lemmatize_text(self, text: str) -> str:

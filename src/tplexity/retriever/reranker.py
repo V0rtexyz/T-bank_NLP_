@@ -25,7 +25,7 @@ class Reranker:
         """
         self.model_name = model_name
         self.device = get_device()
-        logger.info(f"🔄 [rerank] Загрузка модели reranker: {model_name} на устройстве: {self.device}")
+        logger.info(f"🔄 [retriever][reranker] Загрузка модели reranker: {model_name} на устройстве: {self.device}")
 
         try:
             self.model = (
@@ -38,7 +38,7 @@ class Reranker:
                 .to(self.device)
             )
         except Exception as e:
-            logger.error(f"❌ [rerank] Ошибка при загрузке модели reranker: {e}")
+            logger.error(f"❌ [retriever][reranker] Ошибка при загрузке модели reranker: {e}")
             raise
 
     def rerank(self, query: str, documents: list[str], top_n: int = 10) -> list[tuple[int, float]]:
@@ -57,11 +57,11 @@ class Reranker:
             return []
 
         if not query:
-            logger.warning("⚠️ [rerank] Пустой запрос для reranking")
+            logger.warning("⚠️ [retriever][reranker] Пустой запрос для reranking")
             return []
 
         if self.model is None:
-            logger.error("❌ [rerank] Модель не инициализирована")
+            logger.error("❌ [retriever][reranker] Модель не инициализирована")
             return [(idx, 0.0) for idx in range(min(len(documents), top_n))]
 
         try:
@@ -73,7 +73,7 @@ class Reranker:
             return reranked
 
         except Exception as e:
-            logger.error(f"❌ [rerank] Ошибка при reranking: {e}")
+            logger.error(f"❌ [retriever][reranker] Ошибка при reranking: {e}")
             # Возвращаем исходный порядок с нулевыми scores
             return [(idx, 0.0) for idx in range(min(len(documents), top_n))]
 

@@ -1,5 +1,3 @@
-"""Pydantic схемы для generation API"""
-
 from pydantic import BaseModel, Field, field_validator
 
 # Импортируем настройки для получения списка доступных моделей

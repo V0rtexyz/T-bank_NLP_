@@ -40,7 +40,7 @@ class RetrieverClient:
         self.client = httpx.AsyncClient(timeout=timeout_config, limits=limits)
 
         logger.info(
-            f"🔄 [retriever_client] Инициализирован клиент для {self.base_url} (connection pool: max_connections=20)"
+            f"🔄 [generation][generation_service] Инициализирован клиент для {self.base_url} (connection pool: max_connections=20)"
         )
 
     async def _search_internal(
@@ -122,19 +122,19 @@ class RetrieverClient:
             )
             return results
         except httpx.TimeoutException:
-            logger.error("⏱️ [retriever_client] Таймаут при запросе к Retriever API после всех попыток")
+            logger.error("⏱️ [generation][generation_service] Таймаут при запросе к Retriever API после всех попыток")
             raise
         except httpx.HTTPStatusError as e:
-            logger.error(f"❌ [retriever_client] HTTP ошибка от Retriever API: {e.response.status_code}")
+            logger.error(f"❌ [generation][generation_service] HTTP ошибка от Retriever API: {e.response.status_code}")
             raise
         except Exception as e:
-            logger.error(f"❌ [retriever_client] Ошибка при запросе к Retriever API: {e}")
+            logger.error(f"❌ [generation][generation_service] Ошибка при запросе к Retriever API: {e}")
             raise
 
     async def close(self) -> None:
         """Закрывает соединение с Retriever API"""
         await self.client.aclose()
-        logger.info("🔌 [retriever_client] Соединение с Retriever API закрыто")
+        logger.info("🔌 [generation][generation_service] Соединение с Retriever API закрыто")
 
 
 class GenerationService:
@@ -161,7 +161,7 @@ class GenerationService:
             retriever_url (str | None): URL Retriever API (если None, берется из config)
             memory_service (MemoryService | None): Сервис для работы с памятью диалогов
         """
-        logger.info("🔄 [generation_service] Инициализация сервиса генерации")
+        logger.info("🔄 [generation][generation_service] Инициализация сервиса генерации")
 
         # Инициализируем клиент для Retriever API
         retriever_url = retriever_url or settings.retriever_api_url
@@ -174,7 +174,7 @@ class GenerationService:
         # Инициализируем сервис памяти
         self.memory_service = memory_service or MemoryService()
 
-        logger.info(f"✅ [generation_service] Сервис генерации инициализирован: provider={self.llm_provider}")
+        logger.info(f"✅ [generation][generation_service] Сервис генерации инициализирован: provider={self.llm_provider}")
 
     async def _should_use_retriever(
         self, query: str, session_id: str | None = None, llm_provider: str | None = None
@@ -220,7 +220,7 @@ class GenerationService:
             return use_retriever
         except Exception as e:
             logger.warning(
-                f"⚠️ [generation_service] Ошибка при принятии решения ReAct агентом: {e}. Используется retriever по умолчанию."
+                f"⚠️ [generation][generation_service] Ошибка при принятии решения ReAct агентом: {e}. Используется retriever по умолчанию."
             )
             return True
 
@@ -242,17 +242,17 @@ class GenerationService:
         for doc_id, score, text, metadata in documents:
             # Проверяем score
             if score < min_score:
-                logger.debug(f"🔍 [generation_service] Документ {doc_id} отфильтрован: score {score:.3f} < {min_score}")
+                logger.debug(f"🔍 [generation][generation_service] Документ {doc_id} отфильтрован: score {score:.3f} < {min_score}")
                 continue
 
             # Проверяем наличие и длину текста
             if not text or not isinstance(text, str):
-                logger.debug(f"🔍 [generation_service] Документ {doc_id} отфильтрован: пустой или некорректный текст")
+                logger.debug(f"🔍 [generation][generation_service] Документ {doc_id} отфильтрован: пустой или некорректный текст")
                 continue
 
             if len(text.strip()) < min_text_length:
                 logger.debug(
-                    f"🔍 [generation_service] Документ {doc_id} отфильтрован: длина текста {len(text)} < {min_text_length}"
+                    f"🔍 [generation][generation_service] Документ {doc_id} отфильтрован: длина текста {len(text)} < {min_text_length}"
                 )
                 continue
 
@@ -260,7 +260,7 @@ class GenerationService:
 
         if len(validated) < len(documents):
             logger.info(
-                f"🔍 [generation_service] Валидация документов: {len(documents)} -> {len(validated)} "
+                f"🔍 [generation][generation_service] Валидация документов: {len(documents)} -> {len(validated)} "
                 f"(отфильтровано {len(documents) - len(validated)})"
             )
 
@@ -302,7 +302,7 @@ class GenerationService:
         Returns:
             str: Сгенерированный ответ
         """
-        logger.debug("🔄 [generation_service] Отправка запроса к LLM")
+        logger.debug("🔄 [generation][generation_service] Отправка запроса к LLM")
         return await self.llm_client.generate(messages, temperature=temperature, max_tokens=max_tokens)
 
     async def generate(  # noqa: C901
@@ -345,14 +345,14 @@ class GenerationService:
 
         # Выбираем провайдер LLM (если указан в запросе, используем его, иначе используем из self)
         provider = llm_provider or self.llm_provider
-        logger.info(f"🔄 [generation_service] Генерация для запроса: '{query[:50]}...'")
+        logger.info(f"🔄 [generation][generation_service] Генерация для запроса: '{query[:50]}...'")
 
         # ReAct агент: решение о необходимости retriever
         react_start_time = time.time()
         use_retriever = await self._should_use_retriever(query, session_id, llm_provider)
         react_time = time.time() - react_start_time
         logger.info(
-            f"✅ [generation_service] ReAct агент: {'использовать' if use_retriever else 'НЕ использовать'} retriever ({react_time:.2f}с)"
+            f"✅ [generation][generation_service] ReAct агент: {'использовать' if use_retriever else 'НЕ использовать'} retriever ({react_time:.2f}с)"
         )
 
         context_documents = []
@@ -372,14 +372,14 @@ class GenerationService:
             )
             search_time = time.time() - search_start_time
             logger.info(
-                f"✅ [generation_service] Поиск завершен: {len(raw_documents)} документов за {search_time:.2f}с"
+                f"✅ [generation][generation_service] Поиск завершен: {len(raw_documents)} документов за {search_time:.2f}с"
             )
 
             # Валидация и фильтрация документов
             context_documents = self._validate_documents(raw_documents, min_score=0.0, min_text_length=10)
 
             if not context_documents:
-                logger.warning("⚠️ [generation_service] Релевантные документы не найдены или не прошли валидацию")
+                logger.warning("⚠️ [generation][generation_service] Релевантные документы не найдены или не прошли валидацию")
                 error_message = "К сожалению, я не нашел релевантной информации в базе знаний для ответа на ваш вопрос."
                 total_time = time.time() - total_start_time
                 return (
@@ -414,7 +414,7 @@ class GenerationService:
                 for message in history_messages:
                     messages.append({"role": message.get("role"), "content": message.get("content", "")})
                 if history_messages:
-                    logger.debug(f"📚 [generation_service] Использована история: {len(history_messages)} сообщений")
+                    logger.debug(f"📚 [generation][generation_service] Использована история: {len(history_messages)} сообщений")
 
         # Добавляем текущий запрос пользователя
         messages.append({"role": "user", "content": prompt})
@@ -429,7 +429,7 @@ class GenerationService:
         answer = await llm_client.generate(messages, temperature=temperature, max_tokens=max_tokens)
         generation_time = time.time() - generation_start_time
         logger.info(
-            f"✅ [generation_service] Ответ сгенерирован за {generation_time:.2f}с (модель: {llm_client.model})"
+            f"✅ [generation][generation_service] Ответ сгенерирован за {generation_time:.2f}с (модель: {llm_client.model})"
         )
 
         # Шаг 5: Сохраняем историю диалога в память (если указан session_id)
@@ -443,9 +443,9 @@ class GenerationService:
 
                 # Обновляем TTL сессии
                 await self.memory_service.update_ttl(session_id)
-                logger.debug(f"💾 [generation_service] История сохранена для сессии {session_id}")
+                logger.debug(f"💾 [generation][generation_service] История сохранена для сессии {session_id}")
             except Exception as e:
-                logger.error(f"❌ [generation_service] Ошибка при сохранении истории для сессии {session_id}: {e}")
+                logger.error(f"❌ [generation][generation_service] Ошибка при сохранении истории для сессии {session_id}: {e}")
                 # Продолжаем выполнение даже если сохранение не удалось
 
         # Извлекаем источники (всегда включаем)
@@ -456,7 +456,7 @@ class GenerationService:
         total_time = time.time() - total_start_time
         search_str = f"{search_time:.2f}с" if search_time is not None else "N/A"
         logger.info(
-            f"✅ [generation_service] Обработка завершена за {total_time:.2f}с (поиск: {search_str}, генерация: {generation_time:.2f}с)"
+            f"✅ [generation][generation_service] Обработка завершена за {total_time:.2f}с (поиск: {search_str}, генерация: {generation_time:.2f}с)"
         )
 
         return answer, doc_ids, metadatas, search_time, generation_time, total_time

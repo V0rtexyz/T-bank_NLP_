@@ -31,14 +31,14 @@ async def start_monitoring_automatically():
         channels_list = config.get_channels_list() if config else []
 
         if not config or not channels_list:
-            logger.warning("⚠️ [tg_parse] Конфигурация не загружена или список каналов пуст, мониторинг не запущен")
+            logger.warning("⚠️ [tg_parse][app] Конфигурация не загружена или список каналов пуст, мониторинг не запущен")
             return
 
         if not config.api_id or not config.api_hash:
-            logger.warning("⚠️ [tg_parse] Не указаны api_id или api_hash, мониторинг не запущен")
+            logger.warning("⚠️ [tg_parse][app] Не указаны api_id или api_hash, мониторинг не запущен")
             return
 
-        logger.info("🔄 [tg_parse] Автоматический запуск мониторинга...")
+        logger.info("🔄 [tg_parse][app] Автоматический запуск мониторинга...")
 
         service = TelegramMonitorService(
             api_id=config.api_id,
@@ -58,9 +58,9 @@ async def start_monitoring_automatically():
         asyncio.create_task(service.start_monitoring())
         set_monitoring_status(True)
 
-        logger.info(f"✅ [tg_parse] Мониторинг автоматически запущен для {len(channels_list)} каналов")
+        logger.info(f"✅ [tg_parse][app] Мониторинг автоматически запущен для {len(channels_list)} каналов")
     except Exception as e:
-        logger.error(f"❌ [tg_parse] Ошибка при автоматическом запуске мониторинга: {e}", exc_info=True)
+        logger.error(f"❌ [tg_parse][app] Ошибка при автоматическом запуске мониторинга: {e}", exc_info=True)
 
 
 @asynccontextmanager
@@ -70,14 +70,14 @@ async def lifespan(app: FastAPI):
 
     Запускается при старте и остановке приложения
     """
-    logger.info("🚀 [tg_parse] Запуск Telegram Parser микросервиса")
+    logger.info("🚀 [tg_parse][app] Запуск Telegram Parser микросервиса")
 
     # Автоматически запускаем мониторинг при старте
     await start_monitoring_automatically()
 
     yield
 
-    logger.info("🛑 [tg_parse] Остановка Telegram Parser микросервиса")
+    logger.info("🛑 [tg_parse][app] Остановка Telegram Parser микросервиса")
 
 
 # Создание FastAPI приложения

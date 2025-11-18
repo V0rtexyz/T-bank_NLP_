@@ -1,8 +1,3 @@
-"""
-Telegram бот с интеграцией Generation API микросервиса.
-Отправляет сообщения пользователя в Generation API (FastAPI) и возвращает ответ.
-"""
-
 import asyncio
 import logging
 import re
@@ -148,7 +143,7 @@ def extract_source_link(source: dict, idx: int) -> tuple[str | None, str | None]
             # Для приватных каналов используется формат с channel_id
             link = f"https://t.me/c/{channel_id}/{message_id}"
             logger.debug(
-                f"📋 [tg_bot] extract_source_link: источник {idx} сформирован из channel_id и message_id: {link}"
+                f"📋 [tg_bot][bot] extract_source_link: источник {idx} сформирован из channel_id и message_id: {link}"
             )
         else:
             # Пробуем старый формат (для обратной совместимости)
@@ -158,14 +153,14 @@ def extract_source_link(source: dict, idx: int) -> tuple[str | None, str | None]
 
             if original_link:
                 link = original_link
-                logger.debug(f"📋 [tg_bot] extract_source_link: источник {idx} использует original_link: {link}")
+                logger.debug(f"📋 [tg_bot][bot] extract_source_link: источник {idx} использует original_link: {link}")
             elif channel_name and original_id:
                 clean_channel = channel_name.lstrip("@")
                 link = f"https://t.me/{clean_channel}/{original_id}"
-                logger.debug(f"📋 [tg_bot] extract_source_link: источник {idx} сформирован из channel_name: {link}")
+                logger.debug(f"📋 [tg_bot][bot] extract_source_link: источник {idx} сформирован из channel_name: {link}")
 
     if not link:
-        logger.warning(f"⚠️ [tg_bot] Недостаточно данных для источника {idx}: metadata={metadata}")
+        logger.warning(f"⚠️ [tg_bot][bot] Недостаточно данных для источника {idx}: metadata={metadata}")
         return None, None
 
     # Извлекаем название канала из ссылки
@@ -246,12 +241,12 @@ def format_sources(sources: list[dict], max_sources: int = 5) -> str:
         str: Отформатированная строка с источниками в формате HTML
     """
     if not sources:
-        logger.warning("⚠️ [tg_bot] format_sources: sources пуст")
+        logger.warning("⚠️ [tg_bot][bot] format_sources: sources пуст")
         return ""
 
     # Берем топ-N источников
     top_sources = sources[:max_sources]
-    logger.info(f"📋 [tg_bot] format_sources: обрабатываем {len(top_sources)} источников")
+    logger.info(f"📋 [tg_bot][bot] format_sources: обрабатываем {len(top_sources)} источников")
 
     # Формируем список источников
     source_items = []
@@ -266,12 +261,12 @@ def format_sources(sources: list[dict], max_sources: int = 5) -> str:
             source_items.append(f'<b>[{idx}]</b> <a href="{link_escaped}">{channel_name_escaped}</a>')
 
     if not source_items:
-        logger.warning("⚠️ [tg_bot] format_sources: не удалось сформировать ни одной ссылки")
+        logger.warning("⚠️ [tg_bot][bot] format_sources: не удалось сформировать ни одной ссылки")
         return ""
 
     # Формируем итоговую строку с красивым форматированием в стиле T-Bank
     sources_text = "📚 <b>Источники:</b>\n" + "\n".join(source_items)
-    logger.info(f"📋 [tg_bot] format_sources: сформирован текст с {len(source_items)} источниками")
+    logger.info(f"📋 [tg_bot][bot] format_sources: сформирован текст с {len(source_items)} источниками")
     return sources_text
 
 
@@ -390,7 +385,7 @@ T-Plexity — интеллектуальная система, которая в
 
     # Используем qwen как модель по умолчанию
     selected_model = "qwen"
-    logger.info(f"📌 [tg_bot] Использование модели: {selected_model}")
+    logger.info(f"📌 [tg_bot][bot] Использование модели: {selected_model}")
 
     # Показываем индикатор печати
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -414,9 +409,9 @@ T-Plexity — интеллектуальная система, которая в
         timing_info = "\n".join(timing_info_parts)
 
         # Логируем полученные источники для отладки
-        logger.info(f"📋 [tg_bot] Получено источников: {len(sources)}")
+        logger.info(f"📋 [tg_bot][bot] Получено источников: {len(sources)}")
         if sources:
-            logger.debug(f"📋 [tg_bot] Первый источник: {sources[0] if sources else 'нет'}")
+            logger.debug(f"📋 [tg_bot][bot] Первый источник: {sources[0] if sources else 'нет'}")
 
         # Форматируем источники
         sources_text = format_sources(sources, max_sources=5)
@@ -431,7 +426,7 @@ T-Plexity — интеллектуальная система, которая в
         answer_with_citations = make_citations_clickable(answer_html, citation_map)
 
         logger.info(
-            f"📋 [tg_bot] Отформатированный текст источников: {sources_text[:100] if sources_text else 'пусто'}..."
+            f"📋 [tg_bot][bot] Отформатированный текст источников: {sources_text[:100] if sources_text else 'пусто'}..."
         )
 
         # Формируем полный ответ с источниками и временем генерации

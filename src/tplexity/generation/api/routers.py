@@ -1,5 +1,3 @@
-"""Роутеры для generation микросервиса"""
-
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -64,13 +62,13 @@ async def generate(
             total_time=total_time,
         )
     except ValueError as e:
-        logger.error(f"❌ [generation.api] Ошибка валидации: {e}")
+        logger.error(f"❌ [generation][routers] Ошибка валидации: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"❌ [generation.api] Ошибка при генерации ответа: {e}")
+        logger.error(f"❌ [generation][routers] Ошибка при генерации ответа: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при генерации ответа: {str(e)}",
@@ -99,7 +97,7 @@ async def clear_session(
             message=f"История сессии {request.session_id} успешно очищена",
         )
     except Exception as e:
-        logger.error(f"❌ [generation.api] Ошибка при очистке истории сессии {request.session_id}: {e}")
+        logger.error(f"❌ [generation][routers] Ошибка при очистке истории сессии {request.session_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при очистке истории сессии: {str(e)}",

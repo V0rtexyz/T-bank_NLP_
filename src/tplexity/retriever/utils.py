@@ -15,8 +15,8 @@ def get_device() -> torch.device:
     if torch.cuda.is_available():
         device = torch.device("cuda")
         gpu_name = torch.cuda.get_device_name(0)
-        logger.info(f"✅ [device] GPU доступна: {gpu_name}")
+        logger.info(f"✅ [retriever][utils] GPU доступна: {gpu_name}")
     else:
-        logger.info("ℹ️ [device] GPU недоступна, используется CPU")
+        logger.info("ℹ️ [retriever][utils] GPU недоступна, используется CPU")
         device = torch.device("cpu")
     return device

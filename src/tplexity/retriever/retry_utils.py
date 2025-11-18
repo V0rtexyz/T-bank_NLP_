@@ -113,13 +113,13 @@ async def retry_with_backoff(
 
             # Проверяем, можно ли повторить
             if not is_retryable_error(e):
-                logger.warning(f"⚠️ [retry] Невозможно повторить запрос: {type(e).__name__}: {e}")
+                logger.warning(f"⚠️ [retriever][retry_utils] Невозможно повторить запрос: {type(e).__name__}: {e}")
                 raise
 
             # Если это последняя попытка, выбрасываем исключение
             if attempt == max_retries - 1:
                 logger.error(
-                    f"❌ [retry] Все попытки исчерпаны ({max_retries}). Последняя ошибка: {type(e).__name__}: {e}"
+                    f"❌ [retriever][retry_utils] Все попытки исчерпаны ({max_retries}). Последняя ошибка: {type(e).__name__}: {e}"
                 )
                 raise
 
@@ -132,7 +132,7 @@ async def retry_with_backoff(
                 delay += jitter_amount
 
             logger.warning(
-                f"⚠️ [retry] Попытка {attempt + 1}/{max_retries} не удалась: {type(e).__name__}: {e}. "
+                f"⚠️ [retriever][retry_utils] Попытка {attempt + 1}/{max_retries} не удалась: {type(e).__name__}: {e}. "
                 f"Повтор через {delay:.2f}с"
             )
 

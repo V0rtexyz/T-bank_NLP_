@@ -1,5 +1,3 @@
-"""Зависимости для Telegram Bot API"""
-
 import logging
 
 from telegram.ext import Application
@@ -31,9 +29,9 @@ def get_bot_app() -> Application:
         # Создаем клиент Generation API
         try:
             generation_client = create_service_client()
-            logger.info("✅ Клиент Generation API создан")
+            logger.info("✅ [tg_bot][dependencies] Клиент Generation API создан")
         except ValueError as e:
-            logger.error(f"❌ Ошибка создания клиента Generation API: {e}")
+            logger.error(f"❌ [tg_bot][dependencies] Ошибка создания клиента Generation API: {e}")
             raise ValueError(f"Ошибка создания клиента Generation API: {e}") from e
 
         # Создаем приложение Telegram
@@ -48,6 +46,6 @@ def get_bot_app() -> Application:
         register_handlers(application)
 
         _bot_app_instance = application
-        logger.info("✅ Telegram Bot Application создан")
+        logger.info("✅ [tg_bot][dependencies] Telegram Bot Application создан")
 
     return _bot_app_instance

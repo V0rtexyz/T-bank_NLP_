@@ -1,10 +1,3 @@
-"""
-Generation микросервис
-
-Микросервис для генерации ответов с использованием RAG (Retrieval-Augmented Generation).
-Работает независимо и взаимодействует с Retriever микросервисом для получения контекста.
-"""
-
 import logging
 from contextlib import asynccontextmanager
 
@@ -27,17 +20,17 @@ async def lifespan(app: FastAPI):
     """
     from tplexity.generation.api.dependencies import get_generation
 
-    logger.info("🚀 [generation] Запуск Generation микросервиса")
+    logger.info("🚀 [generation][app] Запуск Generation микросервиса")
     yield
-    logger.info("🛑 [generation] Остановка Generation микросервиса")
+    logger.info("🛑 [generation][app] Остановка Generation микросервиса")
 
     # Закрываем соединения при остановке
     try:
         generation_service = get_generation()
         await generation_service.close()
-        logger.info("✅ [generation] Соединения закрыты")
+        logger.info("✅ [generation][app] Соединения закрыты")
     except Exception as e:
-        logger.error(f"❌ [generation] Ошибка при закрытии соединений: {e}")
+        logger.error(f"❌ [generation][app] Ошибка при закрытии соединений: {e}")
 
 
 # Создание FastAPI приложения

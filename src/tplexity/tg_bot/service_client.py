@@ -1,7 +1,3 @@
-"""
-Клиент для взаимодействия с Generation API (FastAPI микросервис).
-"""
-
 import logging
 
 import httpx
@@ -32,7 +28,7 @@ class GenerationClient:
         if self._httpx_client is None:
             timeout_config = httpx.Timeout(self.timeout)
             self._httpx_client = httpx.AsyncClient(timeout=timeout_config, headers={"Content-Type": "application/json"})
-            logger.info("Generation client initialized")
+            logger.info("[tg_bot][service_client] Generation client инициализирован")
 
     async def send_message(  # noqa: C901
         self,
@@ -81,17 +77,17 @@ class GenerationClient:
             payload["max_tokens"] = max_tokens
         if llm_provider is not None:
             payload["llm_provider"] = llm_provider
-            logger.info(f"📤 [tg_bot.service_client] Отправка запроса с llm_provider={llm_provider}")
+            logger.info(f"📤 [tg_bot][service_client] Отправка запроса с llm_provider={llm_provider}")
         else:
             logger.info(
-                "📤 [tg_bot.service_client] Отправка запроса без указания llm_provider (будет использована модель по умолчанию)"
+                "📤 [tg_bot][service_client] Отправка запроса без указания llm_provider (будет использована модель по умолчанию)"
             )
         if session_id is not None:
             payload["session_id"] = session_id
-            logger.debug(f"📤 [tg_bot.service_client] Отправка запроса с session_id={session_id}")
+            logger.debug(f"📤 [tg_bot][service_client] Отправка запроса с session_id={session_id}")
 
         try:
-            logger.info(f"Sending request to generation API: {message_text[:50]}...")
+            logger.info(f"[tg_bot][service_client] Отправка запроса к generation API: {message_text[:50]}...")
             response = await self._httpx_client.post(url, json=payload)
             response.raise_for_status()  # Вызовет исключение при ошибке HTTP
 
@@ -101,7 +97,7 @@ class GenerationClient:
             answer = response_data.get("answer", "")
 
             if not answer:
-                logger.warning("Empty answer received from generation API")
+                logger.warning("[tg_bot][service_client] Получен пустой ответ от generation API")
                 error_message = "Не удалось получить ответ от сервиса генерации."
                 return error_message, error_message, [], None, 0.0, 0.0
 
@@ -114,13 +110,13 @@ class GenerationClient:
             total_time = response_data.get("total_time", 0.0)
 
             # Логируем структуру источников для отладки
-            logger.info(f"📋 [tg_bot.service_client] Получено источников: {len(sources)}")
+            logger.info(f"📋 [tg_bot][service_client] Получено источников: {len(sources)}")
             if sources:
-                logger.info(f"📋 [tg_bot.service_client] Первый источник (структура): {sources[0]}")
+                logger.info(f"📋 [tg_bot][service_client] Первый источник (структура): {sources[0]}")
                 if isinstance(sources[0], dict):
-                    logger.info(f"📋 [tg_bot.service_client] Первый источник (metadata): {sources[0].get('metadata')}")
+                    logger.info(f"📋 [tg_bot][service_client] Первый источник (metadata): {sources[0].get('metadata')}")
 
-            logger.info(f"Received response from generation API: answer={len(answer)} chars (sources: {len(sources)})")
+            logger.info(f"[tg_bot][service_client] Получен ответ от generation API: answer={len(answer)} chars (sources: {len(sources)})")
             # Возвращаем один ответ дважды для обратной совместимости с кодом бота
             return answer, answer, sources, search_time, generation_time, total_time
 
@@ -133,13 +129,13 @@ class GenerationClient:
                 error_detail = str(e)
                 print(error_detail)
 
-            logger.error(f"HTTP error from generation API: {error_detail}")
+            logger.error(f"[tg_bot][service_client] HTTP ошибка от generation API: {error_detail}")
             raise ValueError(f"Ошибка от generation API: {error_detail}") from e
         except httpx.RequestError as e:
-            logger.error(f"Request error to generation API: {e}")
+            logger.error(f"[tg_bot][service_client] Ошибка запроса к generation API: {e}")
             raise ValueError(f"Ошибка подключения к generation API: {str(e)}") from e
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
+            logger.error(f"[tg_bot][service_client] Неожиданная ошибка: {e}")
             raise
 
     async def clear_session(self, session_id: str) -> None:
@@ -158,15 +154,15 @@ class GenerationClient:
         payload = {"session_id": session_id}
 
         try:
-            logger.info(f"🗑️ [tg_bot.service_client] Очистка истории сессии: {session_id}")
+            logger.info(f"🗑️ [tg_bot][service_client] Очистка истории сессии: {session_id}")
             response = await self._httpx_client.post(url, json=payload)
             response.raise_for_status()
 
             response_data = response.json()
             if response_data.get("success"):
-                logger.info(f"✅ [tg_bot.service_client] История сессии {session_id} успешно очищена")
+                logger.info(f"✅ [tg_bot][service_client] История сессии {session_id} успешно очищена")
             else:
-                logger.warning(f"⚠️ [tg_bot.service_client] Очистка истории сессии {session_id} не удалась")
+                logger.warning(f"⚠️ [tg_bot][service_client] Очистка истории сессии {session_id} не удалась")
 
         except httpx.HTTPStatusError as e:
             error_detail = "Unknown error"
@@ -176,13 +172,13 @@ class GenerationClient:
             except Exception:
                 error_detail = str(e)
 
-            logger.error(f"HTTP error from generation API when clearing session: {error_detail}")
+            logger.error(f"[tg_bot][service_client] HTTP ошибка от generation API при очистке сессии: {error_detail}")
             raise ValueError(f"Ошибка от generation API при очистке сессии: {error_detail}") from e
         except httpx.RequestError as e:
-            logger.error(f"Request error to generation API when clearing session: {e}")
+            logger.error(f"[tg_bot][service_client] Ошибка запроса к generation API при очистке сессии: {e}")
             raise ValueError(f"Ошибка подключения к generation API при очистке сессии: {str(e)}") from e
         except Exception as e:
-            logger.error(f"Unexpected error when clearing session: {e}")
+            logger.error(f"[tg_bot][service_client] Неожиданная ошибка при очистке сессии: {e}")
             raise
 
     async def close(self) -> None:
@@ -190,7 +186,7 @@ class GenerationClient:
         if self._httpx_client:
             await self._httpx_client.aclose()
             self._httpx_client = None
-            logger.info("Generation client closed")
+            logger.info("[tg_bot][service_client] Generation client закрыт")
 
 
 def create_service_client() -> GenerationClient:
