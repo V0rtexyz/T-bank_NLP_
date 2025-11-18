@@ -18,13 +18,10 @@ class Settings(BaseSettings):
     top_k: int = 20
     top_n: int = 10
 
-<<<<<<< Updated upstream
-=======
-    # Query reformulation настройки
-    enable_query_reformulation: bool = False  # Отключено для eval - экономит 1-3 сек на запрос
-    query_reformulation_llm_provider: str = "qwen"
+    # Веса для гибридного поиска (Dense vs Sparse)
+    sparse_weight: float = 0.7  # Вес для BM25 (sparse)
+    dense_weight: float = 0.3   # Вес для Dense embeddings
 
->>>>>>> Stashed changes
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).parent / ".env"),
         env_file_encoding="utf-8",

@@ -33,6 +33,8 @@ class VectorSearch:
         api_key: str | None,
         timeout: int,
         prefetch_ratio: float,
+        sparse_weight: float = 0.7,
+        dense_weight: float = 0.3,
     ):
         """Инициализация векторного поисковика
 
@@ -43,6 +45,8 @@ class VectorSearch:
             api_key (str | None): API ключ для Qdrant
             timeout (int): Таймаут для подключения
             prefetch_ratio (float): Во сколько раз больше результатов для prefetch
+            sparse_weight (float): Вес для BM25 (sparse) при гибридном поиске
+            dense_weight (float): Вес для Dense embeddings при гибридном поиске
         """
         self.collection_name = collection_name
         self.host = host
@@ -50,6 +54,8 @@ class VectorSearch:
         self.api_key = api_key
         self.timeout = timeout
         self.prefetch_ratio = prefetch_ratio
+        self.sparse_weight = sparse_weight
+        self.dense_weight = dense_weight
 
         logger.info("🔄 [retriever][vector_search] Инициализация клиента Qdrant")
         try:
@@ -339,34 +345,70 @@ class VectorSearch:
             asyncio.to_thread(self.bm25.encode_query, query),
         )
 
-        prefetch = [
-            Prefetch(
-                query=dense_query,
-                using="dense",
-                limit=int(top_k * prefetch_ratio),
-            ),
-            Prefetch(
-                query=sparse_query,
-                using="bm25",
-                limit=int(top_k * prefetch_ratio),
-            ),
-        ]
-
-        search_results = await self.client.query_points(
-            collection_name=self.collection_name,
-            prefetch=prefetch,
-            query=FusionQuery(
-                fusion=Fusion.RRF,
-            ),
-            with_payload=True,
-            limit=top_k,
+        # Выполняем два отдельных поиска для взвешенного объединения
+        logger.debug(
+            f"⚖️ [retriever][vector_search] Взвешенный поиск: dense_weight={self.dense_weight}, sparse_weight={self.sparse_weight}"
         )
-
-        results = []
-        for result in search_results.points:
+        
+        # Параллельный поиск по dense и sparse
+        prefetch_limit = int(top_k * prefetch_ratio)
+        
+        dense_results_raw, sparse_results_raw = await asyncio.gather(
+            self.client.search(
+                collection_name=self.collection_name,
+                query_vector=("dense", dense_query),
+                limit=prefetch_limit,
+                with_payload=True,
+            ),
+            self.client.search(
+                collection_name=self.collection_name,
+                query_vector=("bm25", sparse_query),
+                limit=prefetch_limit,
+                with_payload=True,
+            ),
+        )
+        
+        # Собираем результаты с весами
+        weighted_scores: dict[str, tuple[float, str, dict | None]] = {}
+        
+        # Добавляем dense результаты с весом
+        for result in dense_results_raw:
+            doc_id = str(result.id)
             text = result.payload.get("text", "")
             metadata = {k: v for k, v in result.payload.items() if k != "text"}
-            results.append((str(result.id), float(result.score), text, metadata))
+            weighted_scores[doc_id] = (
+                float(result.score) * self.dense_weight,
+                text,
+                metadata,
+            )
+        
+        # Добавляем/объединяем sparse результаты с весом
+        for result in sparse_results_raw:
+            doc_id = str(result.id)
+            text = result.payload.get("text", "")
+            metadata = {k: v for k, v in result.payload.items() if k != "text"}
+            sparse_score = float(result.score) * self.sparse_weight
+            
+            if doc_id in weighted_scores:
+                # Документ найден в обоих поисках - суммируем взвешенные скоры
+                existing_score, _, _ = weighted_scores[doc_id]
+                weighted_scores[doc_id] = (
+                    existing_score + sparse_score,
+                    text,
+                    metadata,
+                )
+            else:
+                # Новый документ только из sparse поиска
+                weighted_scores[doc_id] = (sparse_score, text, metadata)
+        
+        # Сортируем по итоговому взвешенному скору и берем top_k
+        sorted_results = sorted(
+            [(doc_id, score, text, metadata) for doc_id, (score, text, metadata) in weighted_scores.items()],
+            key=lambda x: x[1],
+            reverse=True,
+        )[:top_k]
+        
+        results = sorted_results
 
         return results
 
