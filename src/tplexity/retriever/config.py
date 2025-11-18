@@ -12,6 +12,22 @@ class Settings(BaseSettings):
     qdrant_api_key: str | None = "your qdrant api key here"
     qdrant_collection_name: str = "documents"
     qdrant_timeout: int = 60
+    qdrant_connect_timeout: int = 10
+    qdrant_read_timeout: int = 30
+    qdrant_write_timeout: int = 30
+
+    # Connection pooling настройки
+    qdrant_pool_connections: int = 10
+    qdrant_pool_maxsize: int = 20
+    qdrant_max_keepalive_connections: int = 5
+    qdrant_keepalive_expiry: float = 5.0
+
+    # Retry настройки
+    qdrant_max_retries: int = 3
+    qdrant_retry_initial_delay: float = 1.0
+    qdrant_retry_max_delay: float = 60.0
+    qdrant_retry_exponential_base: float = 2.0
+    qdrant_retry_jitter: bool = True
 
     # Retriever настройки
     prefetch_ratio: float = 1.0

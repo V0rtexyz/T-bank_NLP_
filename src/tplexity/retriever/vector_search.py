@@ -4,6 +4,7 @@ import traceback
 from typing import Literal
 from uuid import uuid4
 
+import httpx
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     Distance,
@@ -17,7 +18,9 @@ from qdrant_client.models import (
     VectorParams,
 )
 
+from tplexity.retriever.config import settings
 from tplexity.retriever.dense_embedding import get_embedding_model
+from tplexity.retriever.retry_utils import retry_with_backoff
 from tplexity.retriever.sparse_embedding import get_bm25_model
 
 logger = logging.getLogger(__name__)
@@ -34,6 +37,18 @@ class VectorSearch:
         api_key: str | None,
         timeout: int,
         prefetch_ratio: float,
+        connect_timeout: int | None = None,
+        read_timeout: int | None = None,
+        write_timeout: int | None = None,
+        pool_connections: int | None = None,
+        pool_maxsize: int | None = None,
+        max_keepalive_connections: int | None = None,
+        keepalive_expiry: float | None = None,
+        max_retries: int | None = None,
+        retry_initial_delay: float | None = None,
+        retry_max_delay: float | None = None,
+        retry_exponential_base: float | None = None,
+        retry_jitter: bool | None = None,
     ):
         """Инициализация векторного поисковика
 
@@ -42,8 +57,20 @@ class VectorSearch:
             host (str): Хост Qdrant
             port (int): Порт Qdrant
             api_key (str | None): API ключ для Qdrant
-            timeout (int): Таймаут для подключения
+            timeout (int): Общий таймаут для подключения
             prefetch_ratio (float): Во сколько раз больше результатов для prefetch
+            connect_timeout (int | None): Таймаут подключения в секундах
+            read_timeout (int | None): Таймаут чтения в секундах
+            write_timeout (int | None): Таймаут записи в секундах
+            pool_connections (int | None): Количество соединений в пуле
+            pool_maxsize (int | None): Максимальный размер пула соединений
+            max_keepalive_connections (int | None): Максимальное количество keepalive соединений
+            keepalive_expiry (float | None): Время жизни keepalive соединений в секундах
+            max_retries (int | None): Максимальное количество попыток retry
+            retry_initial_delay (float | None): Начальная задержка для retry в секундах
+            retry_max_delay (float | None): Максимальная задержка для retry в секундах
+            retry_exponential_base (float | None): База для exponential backoff
+            retry_jitter (bool | None): Использовать ли jitter для retry
         """
         self.collection_name = collection_name
         self.host = host
@@ -52,16 +79,89 @@ class VectorSearch:
         self.timeout = timeout
         self.prefetch_ratio = prefetch_ratio
 
-        logger.info("🔄 [retriever][vector_search] Инициализация клиента Qdrant")
+        # Retry параметры
+        self.max_retries = max_retries or settings.qdrant_max_retries
+        self.retry_initial_delay = retry_initial_delay or settings.qdrant_retry_initial_delay
+        self.retry_max_delay = retry_max_delay or settings.qdrant_retry_max_delay
+        self.retry_exponential_base = retry_exponential_base or settings.qdrant_retry_exponential_base
+        self.retry_jitter = retry_jitter if retry_jitter is not None else settings.qdrant_retry_jitter
+
+        logger.info("🔄 [retriever][vector_search] Инициализация клиента Qdrant с connection pooling")
         try:
-            self.client = AsyncQdrantClient(
-                url=f"https://{self.host}:{self.port}",
-                api_key=self.api_key,
-                timeout=self.timeout,
+            # Настройка таймаутов
+            connect_timeout_val = connect_timeout or settings.qdrant_connect_timeout
+            read_timeout_val = read_timeout or settings.qdrant_read_timeout
+            write_timeout_val = write_timeout or settings.qdrant_write_timeout
+
+            timeout_config = httpx.Timeout(
+                connect=connect_timeout_val,
+                read=read_timeout_val,
+                write=write_timeout_val,
+                pool=timeout,
             )
-            logger.info(f"✅ [retriever][vector_search] Клиент Qdrant инициализирован: {self.host}:{self.port}")
+
+            # Настройка connection pooling
+            pool_connections_val = pool_connections or settings.qdrant_pool_connections
+            pool_maxsize_val = pool_maxsize or settings.qdrant_pool_maxsize
+            max_keepalive_val = max_keepalive_connections or settings.qdrant_max_keepalive_connections
+            keepalive_expiry_val = keepalive_expiry or settings.qdrant_keepalive_expiry
+
+            limits = httpx.Limits(
+                max_connections=pool_maxsize_val,
+                max_keepalive_connections=max_keepalive_val,
+                keepalive_expiry=keepalive_expiry_val,
+            )
+
+            # Создаем кастомный httpx клиент с connection pooling
+            httpx_client = httpx.AsyncClient(
+                timeout=timeout_config,
+                limits=limits,
+                http2=True,  # Используем HTTP/2 для лучшей производительности
+            )
+
+            # Инициализируем Qdrant клиент с кастомным httpx клиентом
+            # AsyncQdrantClient использует httpx внутри и поддерживает передачу кастомного клиента
+            # через параметр http_client (в некоторых версиях может быть httpx_client)
+            try:
+                self.client = AsyncQdrantClient(
+                    url=f"https://{self.host}:{self.port}",
+                    api_key=self.api_key,
+                    timeout=timeout,
+                    http_client=httpx_client,  # Пробуем http_client
+                )
+            except TypeError:
+                # Если http_client не поддерживается, пробуем httpx_client
+                try:
+                    self.client = AsyncQdrantClient(
+                        url=f"https://{self.host}:{self.port}",
+                        api_key=self.api_key,
+                        timeout=timeout,
+                        httpx_client=httpx_client,
+                    )
+                except TypeError:
+                    # Если оба не работают, создаем клиент без кастомного httpx
+                    # Connection pooling все равно будет работать через встроенный httpx
+                    logger.warning(
+                        "⚠️ [retriever][vector_search] Кастомный httpx клиент не поддерживается, "
+                        "используется встроенный connection pooling"
+                    )
+                    self.client = AsyncQdrantClient(
+                        url=f"https://{self.host}:{self.port}",
+                        api_key=self.api_key,
+                        timeout=timeout,
+                    )
+
+            logger.info(
+                f"✅ [retriever][vector_search] Клиент Qdrant инициализирован: {self.host}:{self.port} "
+                f"(pool: {pool_connections_val}/{pool_maxsize_val}, keepalive: {max_keepalive_val}, "
+                f"timeouts: connect={connect_timeout_val}s, read={read_timeout_val}s, write={write_timeout_val}s)"
+            )
         except Exception as e:
-            logger.error(f"❌ [retriever][vector_search] Ошибка инициализации клиента Qdrant: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"❌ [retriever][vector_search] Ошибка инициализации клиента Qdrant: {e}\n{error_traceback}",
+                exc_info=True,
+            )
             raise
 
         self.embedding_model = get_embedding_model()
@@ -73,7 +173,26 @@ class VectorSearch:
 
     async def _ensure_collection(self) -> None:
         """Создать коллекцию с поддержкой dense и sparse векторов, если не существует"""
-        collections = await self.client.get_collections()
+        async def _get_collections_operation():
+            return await self.client.get_collections()
+
+        try:
+            collections = await retry_with_backoff(
+                _get_collections_operation,
+                max_retries=self.max_retries,
+                initial_delay=self.retry_initial_delay,
+                max_delay=self.retry_max_delay,
+                exponential_base=self.retry_exponential_base,
+                jitter=self.retry_jitter,
+            )
+        except Exception as e:
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"❌ [retriever][vector_search] Ошибка при получении списка коллекций: {type(e).__name__}: {e}\n{error_traceback}",
+                exc_info=True,
+            )
+            raise
+
         collection_names = [col.name for col in collections.collections]
 
         if self.collection_name not in collection_names:
@@ -90,14 +209,32 @@ class VectorSearch:
                 ),
             }
 
-            await self.client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config=vectors_config,
-                sparse_vectors_config=sparse_vectors_config,
-            )
-            logger.info(
-                f"✅ [retriever][vector_search] Коллекция {self.collection_name} создана с dense и sparse векторами"
-            )
+            async def _create_collection_operation():
+                return await self.client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=vectors_config,
+                    sparse_vectors_config=sparse_vectors_config,
+                )
+
+            try:
+                await retry_with_backoff(
+                    _create_collection_operation,
+                    max_retries=self.max_retries,
+                    initial_delay=self.retry_initial_delay,
+                    max_delay=self.retry_max_delay,
+                    exponential_base=self.retry_exponential_base,
+                    jitter=self.retry_jitter,
+                )
+                logger.info(
+                    f"✅ [retriever][vector_search] Коллекция {self.collection_name} создана с dense и sparse векторами"
+                )
+            except Exception as e:
+                error_traceback = traceback.format_exc()
+                logger.error(
+                    f"❌ [retriever][vector_search] Ошибка при создании коллекции: {type(e).__name__}: {e}\n{error_traceback}",
+                    exc_info=True,
+                )
+                raise
         else:
             logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} уже существует")
 
@@ -166,15 +303,25 @@ class VectorSearch:
 
         await self._ensure_collection()
 
+        async def _upsert_operation():
+            return await self.client.upsert(collection_name=self.collection_name, points=points)
+
         try:
-            await self.client.upsert(collection_name=self.collection_name, points=points)
+            await retry_with_backoff(
+                _upsert_operation,
+                max_retries=self.max_retries,
+                initial_delay=self.retry_initial_delay,
+                max_delay=self.retry_max_delay,
+                exponential_base=self.retry_exponential_base,
+                jitter=self.retry_jitter,
+            )
             logger.info(
                 f"✅ [retriever][vector_search] Добавлено {len(documents)} документов в коллекцию {self.collection_name}"
             )
         except Exception as e:
             error_traceback = traceback.format_exc()
             logger.error(
-                f"❌ [retriever][vector_search] Ошибка при добавлении документов в Qdrant: {e}\n{error_traceback}",
+                f"❌ [retriever][vector_search] Ошибка при добавлении документов в Qdrant: {type(e).__name__}: {e}\n{error_traceback}",
                 exc_info=True,
             )
             raise
@@ -228,12 +375,30 @@ class VectorSearch:
         logger.debug(f"🔍 [retriever][vector_search] Выполнение dense поиска для запроса: {query[:50]}...")
         query_embedding = await asyncio.to_thread(self.embedding_model.encode_query, query)
 
-        search_results = await self.client.search(
-            collection_name=self.collection_name,
-            query_vector=("dense", query_embedding),
-            limit=top_k,
-            with_payload=True,
-        )
+        async def _search_operation() -> list:
+            return await self.client.search(
+                collection_name=self.collection_name,
+                query_vector=("dense", query_embedding),
+                limit=top_k,
+                with_payload=True,
+            )
+
+        try:
+            search_results = await retry_with_backoff(
+                _search_operation,
+                max_retries=self.max_retries,
+                initial_delay=self.retry_initial_delay,
+                max_delay=self.retry_max_delay,
+                exponential_base=self.retry_exponential_base,
+                jitter=self.retry_jitter,
+            )
+        except Exception as e:
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"❌ [retriever][vector_search] Ошибка при dense поиске: {type(e).__name__}: {e}\n{error_traceback}",
+                exc_info=True,
+            )
+            raise
 
         results = []
         for result in search_results:
@@ -257,12 +422,30 @@ class VectorSearch:
         logger.debug(f"🔍 [retriever][vector_search] Выполнение sparse поиска для запроса: {query[:50]}...")
         query_embedding = await asyncio.to_thread(self.bm25.encode_query, query)
 
-        search_results = await self.client.search(
-            collection_name=self.collection_name,
-            query_vector=("bm25", query_embedding),
-            limit=top_k,
-            with_payload=True,
-        )
+        async def _search_operation() -> list:
+            return await self.client.search(
+                collection_name=self.collection_name,
+                query_vector=("bm25", query_embedding),
+                limit=top_k,
+                with_payload=True,
+            )
+
+        try:
+            search_results = await retry_with_backoff(
+                _search_operation,
+                max_retries=self.max_retries,
+                initial_delay=self.retry_initial_delay,
+                max_delay=self.retry_max_delay,
+                exponential_base=self.retry_exponential_base,
+                jitter=self.retry_jitter,
+            )
+        except Exception as e:
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"❌ [retriever][vector_search] Ошибка при sparse поиске: {type(e).__name__}: {e}\n{error_traceback}",
+                exc_info=True,
+            )
+            raise
 
         results = []
         for result in search_results:
@@ -309,15 +492,33 @@ class VectorSearch:
             ),
         ]
 
-        search_results = await self.client.query_points(
-            collection_name=self.collection_name,
-            prefetch=prefetch,
-            query=FusionQuery(
-                fusion=Fusion.RRF,
-            ),
-            with_payload=True,
-            limit=top_k,
-        )
+        async def _query_operation():
+            return await self.client.query_points(
+                collection_name=self.collection_name,
+                prefetch=prefetch,
+                query=FusionQuery(
+                    fusion=Fusion.RRF,
+                ),
+                with_payload=True,
+                limit=top_k,
+            )
+
+        try:
+            search_results = await retry_with_backoff(
+                _query_operation,
+                max_retries=self.max_retries,
+                initial_delay=self.retry_initial_delay,
+                max_delay=self.retry_max_delay,
+                exponential_base=self.retry_exponential_base,
+                jitter=self.retry_jitter,
+            )
+        except Exception as e:
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"❌ [retriever][vector_search] Ошибка при гибридном поиске: {type(e).__name__}: {e}\n{error_traceback}",
+                exc_info=True,
+            )
+            raise
 
         results = []
         for result in search_results.points:
@@ -341,11 +542,21 @@ class VectorSearch:
             logger.warning("⚠️ [retriever][vector_search] Передан пустой список ID для получения документов")
             return []
 
-        try:
-            results = await self.client.retrieve(
+        async def _retrieve_operation():
+            return await self.client.retrieve(
                 collection_name=self.collection_name,
                 ids=doc_ids,
                 with_payload=True,
+            )
+
+        try:
+            results = await retry_with_backoff(
+                _retrieve_operation,
+                max_retries=self.max_retries,
+                initial_delay=self.retry_initial_delay,
+                max_delay=self.retry_max_delay,
+                exponential_base=self.retry_exponential_base,
+                jitter=self.retry_jitter,
             )
 
             documents = []
@@ -359,7 +570,11 @@ class VectorSearch:
             )
             return documents
         except Exception as e:
-            logger.error(f"❌ [retriever][vector_search] Ошибка при получении документов: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"❌ [retriever][vector_search] Ошибка при получении документов: {type(e).__name__}: {e}\n{error_traceback}",
+                exc_info=True,
+            )
             raise
 
     async def get_all_documents(self) -> list[tuple[str, str, dict | None]]:
@@ -369,11 +584,21 @@ class VectorSearch:
         Returns:
             list[tuple[str, str, dict | None]]: Список кортежей (doc_id, text, metadata)
         """
-        try:
-            points, _ = await self.client.scroll(
+        async def _scroll_operation():
+            return await self.client.scroll(
                 collection_name=self.collection_name,
                 limit=None,
                 with_payload=True,
+            )
+
+        try:
+            points, _ = await retry_with_backoff(
+                _scroll_operation,
+                max_retries=self.max_retries,
+                initial_delay=self.retry_initial_delay,
+                max_delay=self.retry_max_delay,
+                exponential_base=self.retry_exponential_base,
+                jitter=self.retry_jitter,
             )
 
             documents = []
@@ -385,7 +610,11 @@ class VectorSearch:
             logger.info(f"✅ [retriever][vector_search] Получено {len(documents)} документов из коллекции")
             return documents
         except Exception as e:
-            logger.error(f"❌ [retriever][vector_search] Ошибка при получении всех документов: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"❌ [retriever][vector_search] Ошибка при получении всех документов: {type(e).__name__}: {e}\n{error_traceback}",
+                exc_info=True,
+            )
             raise
 
     async def delete_documents(self, ids: list[str]) -> None:
@@ -400,26 +629,56 @@ class VectorSearch:
             return
 
         logger.info(f"🔄 [retriever][vector_search] Удаление {len(ids)} документов из коллекции {self.collection_name}")
-        try:
-            await self.client.delete(
+        
+        async def _delete_operation():
+            return await self.client.delete(
                 collection_name=self.collection_name,
                 points_selector=PointIdsList(points=ids),
+            )
+
+        try:
+            await retry_with_backoff(
+                _delete_operation,
+                max_retries=self.max_retries,
+                initial_delay=self.retry_initial_delay,
+                max_delay=self.retry_max_delay,
+                exponential_base=self.retry_exponential_base,
+                jitter=self.retry_jitter,
             )
             logger.info(
                 f"✅ [retriever][vector_search] Успешно удалено {len(ids)} документов из коллекции {self.collection_name}"
             )
         except Exception as e:
-            logger.error(f"❌ [retriever][vector_search] Ошибка при удалении документов из Qdrant: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"❌ [retriever][vector_search] Ошибка при удалении документов из Qdrant: {type(e).__name__}: {e}\n{error_traceback}",
+                exc_info=True,
+            )
             raise
 
     async def delete_all_documents(self) -> None:
         """Удалить все документы из коллекции"""
         logger.warning("⚠️ [retriever][vector_search] Удаление всех документов из коллекции")
+        
+        async def _delete_collection_operation():
+            return await self.client.delete_collection(collection_name=self.collection_name)
+
         try:
-            await self.client.delete_collection(collection_name=self.collection_name)
+            await retry_with_backoff(
+                _delete_collection_operation,
+                max_retries=self.max_retries,
+                initial_delay=self.retry_initial_delay,
+                max_delay=self.retry_max_delay,
+                exponential_base=self.retry_exponential_base,
+                jitter=self.retry_jitter,
+            )
             logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} удалена")
             await self._ensure_collection()
             logger.info(f"✅ [retriever][vector_search] Коллекция {self.collection_name} пересоздана")
         except Exception as e:
-            logger.error(f"❌ [retriever][vector_search] Ошибка при удалении всех документов: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"❌ [retriever][vector_search] Ошибка при удалении всех документов: {type(e).__name__}: {e}\n{error_traceback}",
+                exc_info=True,
+            )
             raise
