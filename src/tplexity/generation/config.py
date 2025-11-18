@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     redis_db: int = 0
     redis_password: str | None = None
     session_ttl: int = 86400  # 24 часа в секундах
-    max_history_messages: int = 200  # Максимум 200 сообщений (100 пар запрос-ответ)
+    max_history_messages: int = 10  # Максимум 10 сообщений (5 пар запрос-ответ)
 
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).parent / ".env"),

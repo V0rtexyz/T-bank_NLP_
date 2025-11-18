@@ -1,10 +1,3 @@
-"""
-Retriever микросервис
-
-Микросервис для гибридного поиска по документам с использованием
-dense + sparse embeddings и reranking.
-"""
-
 import logging
 from contextlib import asynccontextmanager
 
@@ -26,12 +19,12 @@ async def lifespan(app: FastAPI):
 
     Запускается при старте и остановке приложения
     """
-    logger.info("🚀 [retriever] Запуск Retriever микросервиса")
-    logger.info("🔄 [retriever] Инициализация RetrieverService и загрузка моделей...")
+    logger.info("🚀 [retriever][app] Запуск Retriever микросервиса")
+    logger.info("🔄 [retriever][app] Инициализация RetrieverService и загрузка моделей...")
     get_retriever()
-    logger.info("✅ [retriever] RetrieverService инициализирован, все модели загружены")
+    logger.info("✅ [retriever][app] RetrieverService инициализирован, все модели загружены")
     yield
-    logger.info("🛑 [retriever] Остановка Retriever микросервиса")
+    logger.info("🛑 [retriever][app] Остановка Retriever микросервиса")
 
 
 # Создание FastAPI приложения

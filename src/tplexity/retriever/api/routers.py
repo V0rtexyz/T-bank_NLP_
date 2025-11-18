@@ -51,7 +51,7 @@ async def add_documents(
         )
     except Exception as e:
         error_traceback = traceback.format_exc()
-        logger.error(f"❌ [retriever.api] Ошибка при добавлении документов: {e}\n{error_traceback}", exc_info=True)
+        logger.error(f"❌ [retriever][routers] Ошибка при добавлении документов: {e}\n{error_traceback}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при добавлении документов: {str(e)}",
@@ -99,7 +99,7 @@ async def search(
         )
     except Exception as e:
         error_traceback = traceback.format_exc()
-        logger.error(f"❌ [retriever.api] Ошибка при поиске: {e}\n{error_traceback}")
+        logger.error(f"❌ [retriever][routers] Ошибка при поиске: {e}\n{error_traceback}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при поиске: {str(e)}",
@@ -138,7 +138,7 @@ async def get_documents(
             total=len(documents),
         )
     except Exception as e:
-        logger.error(f"❌ [retriever.api] Ошибка при получении документов: {e}")
+        logger.error(f"❌ [retriever][routers] Ошибка при получении документов: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при получении документов: {str(e)}",
@@ -175,7 +175,7 @@ async def get_all_documents(
             total=len(documents),
         )
     except Exception as e:
-        logger.error(f"❌ [retriever.api] Ошибка при получении всех документов: {e}")
+        logger.error(f"❌ [retriever][routers] Ошибка при получении всех документов: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при получении всех документов: {str(e)}",
@@ -205,7 +205,7 @@ async def delete_documents(
             success=True,
         )
     except Exception as e:
-        logger.error(f"❌ [retriever.api] Ошибка при удалении документов: {e}")
+        logger.error(f"❌ [retriever][routers] Ошибка при удалении документов: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при удалении документов: {str(e)}",
@@ -231,7 +231,7 @@ async def delete_all_documents(retriever: RetrieverService = Depends(get_retriev
             success=True,
         )
     except Exception as e:
-        logger.error(f"❌ [retriever.api] Ошибка при удалении всех документов: {e}")
+        logger.error(f"❌ [retriever][routers] Ошибка при удалении всех документов: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при удалении всех документов: {str(e)}",

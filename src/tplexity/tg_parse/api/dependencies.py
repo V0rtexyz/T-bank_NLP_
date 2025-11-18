@@ -1,5 +1,3 @@
-"""Dependency Injection для Telegram Monitor Service"""
-
 import logging
 
 from tplexity.tg_parse.config import settings

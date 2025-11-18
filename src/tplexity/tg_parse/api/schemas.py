@@ -1,5 +1,3 @@
-"""Pydantic схемы для Telegram Monitor API"""
-
 from pydantic import BaseModel, Field
 
 

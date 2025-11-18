@@ -1,5 +1,3 @@
-"""Pydantic схемы для generation API"""
-
 from pydantic import BaseModel, Field, field_validator
 
 # Импортируем настройки для получения списка доступных моделей
@@ -47,23 +45,23 @@ class GenerateRequest(BaseModel):
         """Валидирует, что указанный провайдер входит в список доступных моделей"""
         if v is None:
             return None
-        
+
         # Получаем список доступных моделей из настроек
         if llm_settings and hasattr(llm_settings, "available_models"):
             available_models = llm_settings.available_models
         else:
             # Fallback: базовый список поддерживаемых провайдеров
             available_models = ["qwen", "chatgpt", "deepseek"]
-        
+
         v_lower = v.lower().strip()
         if v_lower not in available_models:
             available_str = ", ".join(f"'{m}'" for m in available_models)
             raise ValueError(
-                f"Провайдер '{v}' не найден в списке доступных моделей. "
-                f"Доступные модели: {available_str}"
+                f"Провайдер '{v}' не найден в списке доступных моделей. " f"Доступные модели: {available_str}"
             )
-        
+
         return v_lower
+
     session_id: str | None = Field(
         default=None,
         description="Идентификатор сессии для сохранения истории диалога (если не указано, история не сохраняется)",
@@ -80,12 +78,12 @@ class SourceInfo(BaseModel):
 class GenerateResponse(BaseModel):
     """Схема для ответа генерации"""
 
-    answer: str = Field(..., description="Краткий ответ (для обратной совместимости, равен short_answer)")
-    detailed_answer: str = Field(..., description="Подробный ответ")
-    short_answer: str = Field(..., description="Краткий ответ")
+    answer: str = Field(..., description="Сгенерированный ответ")
     sources: list[SourceInfo] = Field(default_factory=list, description="Список источников (doc_ids и метаданные)")
     query: str = Field(..., description="Исходный запрос пользователя")
-    search_time: float | None = Field(default=None, description="Время поиска информации в секундах (если поиск выполнялся)")
+    search_time: float | None = Field(
+        default=None, description="Время поиска информации в секундах (если поиск выполнялся)"
+    )
     generation_time: float = Field(..., description="Время генерации ответа в секундах")
     total_time: float = Field(..., description="Общее время обработки запроса в секундах")
 

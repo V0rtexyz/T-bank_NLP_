@@ -1,5 +1,3 @@
-"""Роутеры для Telegram Bot микросервиса"""
-
 import logging
 
 from fastapi import APIRouter, Depends
@@ -34,7 +32,7 @@ async def status(
             "bot_name": bot_info.first_name,
         }
     except Exception as e:
-        logger.error(f"Ошибка при получении статуса бота: {e}")
+        logger.error(f"[tg_bot][routers] Ошибка при получении статуса бота: {e}")
         return {
             "status": "error",
             "error": str(e),

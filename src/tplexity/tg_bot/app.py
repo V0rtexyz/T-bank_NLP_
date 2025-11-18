@@ -1,8 +1,3 @@
-"""
-FastAPI приложение для Telegram Bot микросервиса.
-Запускается через uvicorn как отдельный сервис.
-"""
-
 import logging
 from contextlib import asynccontextmanager
 
@@ -34,7 +29,7 @@ async def lifespan(app: FastAPI):
     from tplexity.tg_bot.api.dependencies import get_bot_app
     from tplexity.tg_bot.bot import start_polling
 
-    logger.info("🚀 [Telegram Bot Service] Запуск микросервиса")
+    logger.info("🚀 [tg_bot][app] Запуск микросервиса")
 
     # Инициализируем бота и запускаем polling в фоне
     bot_app = get_bot_app()
@@ -45,7 +40,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Останавливаем polling
-    logger.info("🛑 [Telegram Bot Service] Остановка микросервиса")
+    logger.info("🛑 [tg_bot][app] Остановка микросервиса")
     polling_task.cancel()
     try:
         await polling_task
@@ -56,7 +51,7 @@ async def lifespan(app: FastAPI):
     generation_client = bot_app.bot_data.get("generation_client")
     if generation_client:
         await generation_client.close()
-        logger.info("Соединение с Generation API закрыто")
+        logger.info("[tg_bot][app] Соединение с Generation API закрыто")
 
 
 app = FastAPI(
