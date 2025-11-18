@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+from datetime import datetime
 
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
@@ -168,24 +169,51 @@ def extract_source_link(source: dict, idx: int) -> tuple[str | None, str | None]
     return link, channel_name
 
 
-def build_citation_map(sources: list[dict], max_sources: int = 5) -> dict[int, str]:
+def extract_citation_numbers(text: str) -> set[int]:
+    """
+    Извлекает все номера цитат из текста.
+
+    Args:
+        text: Текст с цитатами в формате [1], [2], [5][6] и т.д.
+
+    Returns:
+        set[int]: Множество номеров цитат, найденных в тексте
+    """
+    pattern = r"\[(\d+)\]"
+    matches = re.findall(pattern, text)
+    return {int(match) for match in matches}
+
+
+def build_citation_map(sources: list[dict], cited_numbers: set[int] | None = None) -> dict[int, str]:
     """
     Создает маппинг номеров цитат к ссылкам источников.
 
     Args:
         sources: Список источников с метаданными
-        max_sources: Максимальное количество источников для обработки
+        cited_numbers: Множество номеров источников, на которые есть ссылки в тексте.
+                       Если None, создает маппинг для всех источников.
 
     Returns:
         dict[int, str]: Словарь {номер_источника: ссылка}
     """
     citation_map = {}
-    top_sources = sources[:max_sources]
-
-    for idx, source in enumerate(top_sources, 1):
-        link, _ = extract_source_link(source, idx)
-        if link:
-            citation_map[idx] = link
+    
+    # Если указаны конкретные номера, создаем маппинг только для них
+    if cited_numbers:
+        for idx in cited_numbers:
+            # Номера цитат начинаются с 1, индексы в списке - с 0
+            source_idx = idx - 1
+            if 0 <= source_idx < len(sources):
+                source = sources[source_idx]
+                link, _ = extract_source_link(source, idx)
+                if link:
+                    citation_map[idx] = link
+    else:
+        # Если номера не указаны, создаем маппинг для всех источников
+        for idx, source in enumerate(sources, 1):
+            link, _ = extract_source_link(source, idx)
+            if link:
+                citation_map[idx] = link
 
     return citation_map
 
@@ -229,13 +257,14 @@ def make_citations_clickable(text: str, citation_map: dict[int, str]) -> str:
     return re.sub(pattern, replace_citation, text)
 
 
-def format_sources(sources: list[dict], max_sources: int = 5) -> str:
+def format_sources(sources: list[dict], cited_numbers: set[int] | None = None) -> str:
     """
     Форматирует источники для красивого отображения в Telegram.
 
     Args:
         sources: Список источников с метаданными
-        max_sources: Максимальное количество источников для отображения
+        cited_numbers: Множество номеров источников, на которые есть ссылки в тексте.
+                       Если None, выводит все источники.
 
     Returns:
         str: Отформатированная строка с источниками в формате HTML
@@ -244,28 +273,78 @@ def format_sources(sources: list[dict], max_sources: int = 5) -> str:
         logger.warning("⚠️ [tg_bot][bot] format_sources: sources пуст")
         return ""
 
-    # Берем топ-N источников
-    top_sources = sources[:max_sources]
-    logger.info(f"📋 [tg_bot][bot] format_sources: обрабатываем {len(top_sources)} источников")
+    # Если указаны конкретные номера, выводим только их
+    if cited_numbers:
+        # Сортируем номера для правильного порядка вывода
+        sorted_numbers = sorted(cited_numbers)
+        logger.info(f"📋 [tg_bot][bot] format_sources: обрабатываем {len(sorted_numbers)} источников из {len(sources)} доступных")
+    else:
+        # Если номера не указаны, выводим все источники
+        sorted_numbers = list(range(1, len(sources) + 1))
+        logger.info(f"📋 [tg_bot][bot] format_sources: обрабатываем все {len(sources)} источников")
 
     # Формируем список источников
     source_items = []
-    for idx, source in enumerate(top_sources, 1):
+    for idx in sorted_numbers:
+        # Номера цитат начинаются с 1, индексы в списке - с 0
+        source_idx = idx - 1
+        if source_idx < 0 or source_idx >= len(sources):
+            logger.warning(f"⚠️ [tg_bot][bot] format_sources: источник с номером {idx} не найден (всего источников: {len(sources)})")
+            continue
+
+        source = sources[source_idx]
         link, channel_name = extract_source_link(source, idx)
-        if link:
-            # Экранируем название канала для HTML
-            channel_name_escaped = escape_html(channel_name)
-            # Экранируем ссылку (в основном для символа &)
-            link_escaped = link.replace("&", "&amp;")
-            # Форматируем как HTML ссылку с нумерацией [1], [2] и т.д. в стиле T-Bank
-            source_items.append(f'<b>[{idx}]</b> <a href="{link_escaped}">{channel_name_escaped}</a>')
+        if not link:
+            continue
+
+        # Извлекаем метаданные
+        metadata = source.get("metadata") or {}
+        
+        # Получаем название канала (приоритет: channel_title, затем channel_name)
+        channel_title = metadata.get("channel_title") or channel_name
+        channel_title_escaped = escape_html(channel_title)
+        
+        # Извлекаем и форматируем дату
+        date_str = None
+        date_value = metadata.get("date")
+        if date_value:
+            try:
+                # Обрабатываем ISO формат даты
+                if isinstance(date_value, str):
+                    # Обрабатываем Z как UTC
+                    if date_value.endswith("Z"):
+                        date_value = date_value.replace("Z", "+00:00")
+                    
+                    # Парсим ISO формат
+                    if "T" in date_value:
+                        post_date = datetime.fromisoformat(date_value)
+                    else:
+                        # Только дата, добавляем время 00:00:00
+                        post_date = datetime.fromisoformat(f"{date_value}T00:00:00")
+                    
+                    # Форматируем дату в читаемый формат: ДД.ММ.ГГГГ
+                    date_str = post_date.strftime("%d.%m.%Y")
+                elif isinstance(date_value, datetime):
+                    date_str = date_value.strftime("%d.%m.%Y")
+            except (ValueError, AttributeError) as e:
+                logger.debug(f"⚠️ [tg_bot][bot] format_sources: не удалось распарсить дату для источника {idx}: {date_value}, ошибка: {e}")
+        
+        # Экранируем ссылку (в основном для символа &)
+        link_escaped = link.replace("&", "&amp;")
+        
+        # Форматируем в формате: [Номер]: Название канала (Дата поста)
+        # Название канала - гиперссылка на пост
+        if date_str:
+            source_items.append(f'[{idx}]: <a href="{link_escaped}">{channel_title_escaped}</a> ({date_str})')
+        else:
+            source_items.append(f'[{idx}]: <a href="{link_escaped}">{channel_title_escaped}</a>')
 
     if not source_items:
         logger.warning("⚠️ [tg_bot][bot] format_sources: не удалось сформировать ни одной ссылки")
         return ""
 
-    # Формируем итоговую строку с красивым форматированием в стиле T-Bank
-    sources_text = "📚 <b>Источники:</b>\n" + "\n".join(source_items)
+    # Формируем итоговую строку со списком источников
+    sources_text = "\n".join(source_items)
     logger.info(f"📋 [tg_bot][bot] format_sources: сформирован текст с {len(source_items)} источниками")
     return sources_text
 
@@ -405,17 +484,21 @@ T-Plexity — интеллектуальная система, которая в
         if sources:
             logger.debug(f"📋 [tg_bot][bot] Первый источник: {sources[0] if sources else 'нет'}")
 
-        # Форматируем источники
-        sources_text = format_sources(sources, max_sources=5)
-
-        # Создаем маппинг цитат для кликабельных ссылок
-        citation_map = build_citation_map(sources, max_sources=5)
-
         # Преобразуем Markdown в HTML (если LLM вернул Markdown)
         answer_html = markdown_to_html(answer)
 
+        # Извлекаем все номера цитат из текста ответа
+        cited_numbers = extract_citation_numbers(answer_html)
+        logger.info(f"📋 [tg_bot][bot] Найдено цитат в тексте: {cited_numbers}")
+
+        # Создаем маппинг цитат для кликабельных ссылок (только для тех, на которые есть ссылки)
+        citation_map = build_citation_map(sources, cited_numbers)
+
         # Делаем цитаты кликабельными в ответе
         answer_with_citations = make_citations_clickable(answer_html, citation_map)
+
+        # Форматируем источники (только те, на которые есть ссылки в тексте)
+        sources_text = format_sources(sources, cited_numbers)
 
         logger.info(
             f"📋 [tg_bot][bot] Отформатированный текст источников: {sources_text[:100] if sources_text else 'пусто'}..."
