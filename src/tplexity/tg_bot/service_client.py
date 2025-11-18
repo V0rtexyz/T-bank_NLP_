@@ -181,6 +181,70 @@ class GenerationClient:
             logger.error(f"[tg_bot][service_client] Неожиданная ошибка при очистке сессии: {e}")
             raise
 
+    async def generate_short_answer(
+        self,
+        detailed_answer: str,
+        llm_provider: str | None = None,
+    ) -> str:
+        """
+        Генерирует краткий ответ на основе детального ответа.
+
+        Args:
+            detailed_answer: Детальный ответ для сокращения
+            llm_provider: Провайдер LLM для использования (опционально)
+
+        Returns:
+            str: Краткий ответ
+
+        Raises:
+            httpx.HTTPError: При ошибке HTTP запроса
+            ValueError: При ошибке валидации ответа
+        """
+        await self._ensure_client()
+
+        # Формируем URL эндпоинта
+        url = f"{self.base_url}/generation/generate-short-answer"
+
+        # Формируем тело запроса
+        payload = {"detailed_answer": detailed_answer}
+        if llm_provider is not None:
+            payload["llm_provider"] = llm_provider
+            logger.info(f"📤 [tg_bot][service_client] Отправка запроса на краткий ответ с llm_provider={llm_provider}")
+
+        try:
+            logger.info(f"[tg_bot][service_client] Отправка запроса на генерацию краткого ответа...")
+            response = await self._httpx_client.post(url, json=payload)
+            response.raise_for_status()
+
+            response_data = response.json()
+
+            # Извлекаем краткий ответ из FastAPI response
+            short_answer = response_data.get("short_answer", "")
+
+            if not short_answer:
+                logger.warning("[tg_bot][service_client] Получен пустой краткий ответ от generation API")
+                return detailed_answer  # Возвращаем детальный ответ как fallback
+
+            logger.info(f"[tg_bot][service_client] Получен краткий ответ: {len(short_answer)} chars")
+            return short_answer
+
+        except httpx.HTTPStatusError as e:
+            error_detail = "Unknown error"
+            try:
+                error_data = e.response.json()
+                error_detail = error_data.get("detail", str(e))
+            except Exception:
+                error_detail = str(e)
+
+            logger.error(f"[tg_bot][service_client] HTTP ошибка от generation API при генерации краткого ответа: {error_detail}")
+            raise ValueError(f"Ошибка от generation API: {error_detail}") from e
+        except httpx.RequestError as e:
+            logger.error(f"[tg_bot][service_client] Ошибка запроса к generation API при генерации краткого ответа: {e}")
+            raise ValueError(f"Ошибка подключения к generation API: {str(e)}") from e
+        except Exception as e:
+            logger.error(f"[tg_bot][service_client] Неожиданная ошибка при генерации краткого ответа: {e}")
+            raise
+
     async def close(self) -> None:
         """Закрывает соединения с сервисом."""
         if self._httpx_client:

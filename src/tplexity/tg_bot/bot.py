@@ -23,10 +23,9 @@ logger = logging.getLogger(__name__)
 
 
 def get_keyboard():
-    """Создает клавиатуру с кнопками 'Очистить историю' и 'Помощь'."""
+    """Создает клавиатуру с кнопкой 'Очистить историю'."""
     keyboard = [
         [KeyboardButton("🗑️ Очистить историю")],
-        [KeyboardButton("ℹ️ Помощь")],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
@@ -393,7 +392,6 @@ T-Plexity — интеллектуальная система, которая в
 
 <b>🔘 Кнопки меню:</b>
 🗑️ Очистить историю — удалить контекст диалога
-ℹ️ Помощь — показать эту справку
 
 <b>✨ Особенности:</b>
 • Источники отображаются под каждым ответом с прямыми ссылками
@@ -418,36 +416,6 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    # Если пользователь нажал кнопку "Помощь"
-    if user_message == "ℹ️ Помощь" or user_message == "Помощь":
-        help_text = """
-<b>ℹ️ Справка по использованию T-Plexity</b>
-
-<b>📊 О системе:</b>
-T-Plexity — интеллектуальная система, которая в реальном времени отслеживает и агрегирует свежие публикации из проверенных инвестиционных Telegram-каналов. Система работает на самых актуальных данных с минимальной задержкой.
-
-<b>📚 Источники информации:</b>
-• Только инвестиционные Telegram-каналы, отобранные по качеству и надежности
-• Каждый ответ сопровождается ссылками на первоисточники (конкретные сообщения из каналов)
-
-<b>💡 Как использовать:</b>
-Просто напишите вопрос о рынках или новостях — я найду актуальную информацию и дам точный ответ с рыночным контекстом.
-
-<b>⚙️ Доступные команды:</b>
-/start — Перезапустить бота
-/help — Показать эту справку
-
-<b>🔘 Кнопки меню:</b>
-🗑️ Очистить историю — удалить контекст диалога
-ℹ️ Помощь — показать эту справку
-
-<b>✨ Особенности:</b>
-• Источники отображаются под каждым ответом с прямыми ссылками
-• История диалога сохраняется для контекста
-• Актуальность данных — минимальная задержка между публикацией и возможностью ответить
-        """
-        await update.message.reply_text(help_text, reply_markup=get_keyboard(), parse_mode="HTML")
-        return
 
     # Получаем клиент сервиса из контекста приложения
     generation_client: GenerationClient = context.bot_data.get("generation_client")
@@ -510,8 +478,31 @@ T-Plexity — интеллектуальная система, которая в
         else:
             response_text = answer_with_citations
 
+        # Определяем, использовался ли RAG (если есть sources, значит использовался)
+        used_rag = len(sources) > 0
+
+        # Создаем клавиатуру с кнопкой "Краткий ответ" только если использовался RAG
+        reply_markup = None
+        if used_rag:
+            keyboard = [[InlineKeyboardButton("📝 Краткий ответ", callback_data=f"short_answer:{update.message.message_id}")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            # Сохраняем детальный ответ и источники в chat_data для последующего использования
+            message_key = f"detailed_answer_{update.message.message_id}"
+            context.chat_data[message_key] = {
+                "detailed_answer": answer_with_citations,
+                "sources_text": sources_text,
+                "sources": sources,
+                "citation_map": citation_map,
+            }
+
         # Отправляем полный ответ
-        await update.message.reply_text(response_text, disable_web_page_preview=True, parse_mode="HTML")
+        sent_message = await update.message.reply_text(
+            response_text, disable_web_page_preview=True, parse_mode="HTML", reply_markup=reply_markup
+        )
+        
+        # Сохраняем ID отправленного сообщения для последующего редактирования
+        if used_rag:
+            context.chat_data[f"sent_message_id_{update.message.message_id}"] = sent_message.message_id
 
     except Exception as e:
         logger.error(f"Ошибка при обработке сообщения: {e}", exc_info=True)
@@ -523,6 +514,151 @@ T-Plexity — интеллектуальная система, которая в
             reply_markup=get_keyboard(),
             parse_mode="HTML",
         )
+
+
+async def short_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик нажатия на кнопки 'Краткий ответ' и 'Подробный ответ'."""
+    query = update.callback_query
+
+    # Отвечаем на callback query
+    await query.answer()
+
+    # Парсим callback_data: "short_answer:message_id" или "detailed_answer:message_id"
+    if query.data.startswith("short_answer:"):
+        # Пользователь хочет краткий ответ
+        original_message_id = int(query.data.split(":")[1])
+        message_key = f"detailed_answer_{original_message_id}"
+        sent_message_key = f"sent_message_id_{original_message_id}"
+
+        # Получаем сохраненные данные
+        saved_data = context.chat_data.get(message_key)
+        sent_message_id = context.chat_data.get(sent_message_key)
+
+        if not saved_data:
+            await query.edit_message_text(
+                "❌ <b>Ошибка</b>\n\nНе удалось найти детальный ответ. Попробуйте задать вопрос снова.",
+                parse_mode="HTML",
+            )
+            logger.error(f"Не найдены сохраненные данные для message_id={original_message_id}")
+            return
+
+        # Получаем клиент сервиса
+        generation_client: GenerationClient = context.bot_data.get("generation_client")
+        if not generation_client:
+            await query.edit_message_text(
+                "❌ <b>Ошибка</b>\n\nСервис генерации недоступен.",
+                parse_mode="HTML",
+            )
+            logger.error("Generation client not found in bot_data")
+            return
+
+        # Показываем индикатор печати
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+
+        try:
+            # Используем qwen как модель по умолчанию
+            selected_model = "qwen"
+
+            # Генерируем краткий ответ
+            detailed_answer = saved_data["detailed_answer"]
+            short_answer = await generation_client.generate_short_answer(
+                detailed_answer=detailed_answer, llm_provider=selected_model
+            )
+
+            # Преобразуем Markdown в HTML (если LLM вернул Markdown)
+            short_answer_html = markdown_to_html(short_answer)
+
+            # Делаем цитаты кликабельными в кратком ответе
+            citation_map = saved_data.get("citation_map", {})
+            short_answer_with_citations = make_citations_clickable(short_answer_html, citation_map)
+
+            # Формируем краткий ответ с источниками
+            sources_text = saved_data.get("sources_text", "")
+            if sources_text:
+                response_text = f"{short_answer_with_citations}\n\n{sources_text}"
+            else:
+                response_text = short_answer_with_citations
+
+            # Создаем кнопку "Подробный ответ"
+            keyboard = [[InlineKeyboardButton("📄 Подробный ответ", callback_data=f"detailed_answer:{original_message_id}")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            # Редактируем сообщение
+            if sent_message_id:
+                # Редактируем отправленное сообщение
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=sent_message_id,
+                    text=response_text,
+                    disable_web_page_preview=True,
+                    parse_mode="HTML",
+                    reply_markup=reply_markup,
+                )
+            else:
+                # Если не нашли ID отправленного сообщения, редактируем сообщение с кнопкой
+                await query.edit_message_text(
+                    response_text,
+                    disable_web_page_preview=True,
+                    parse_mode="HTML",
+                    reply_markup=reply_markup,
+                )
+
+        except Exception as e:
+            logger.error(f"Ошибка при генерации краткого ответа: {e}", exc_info=True)
+            await query.edit_message_text(
+                f"❌ <b>Произошла ошибка</b>\n\nНе удалось сгенерировать краткий ответ.\n\n<i>Детали: {escape_html(str(e))}</i>",
+                parse_mode="HTML",
+            )
+
+    elif query.data.startswith("detailed_answer:"):
+        # Пользователь хочет вернуться к детальному ответу
+        original_message_id = int(query.data.split(":")[1])
+        message_key = f"detailed_answer_{original_message_id}"
+        sent_message_key = f"sent_message_id_{original_message_id}"
+
+        # Получаем сохраненные данные
+        saved_data = context.chat_data.get(message_key)
+        sent_message_id = context.chat_data.get(sent_message_key)
+
+        if not saved_data:
+            await query.edit_message_text(
+                "❌ <b>Ошибка</b>\n\nНе удалось найти детальный ответ. Попробуйте задать вопрос снова.",
+                parse_mode="HTML",
+            )
+            logger.error(f"Не найдены сохраненные данные для message_id={original_message_id}")
+            return
+
+        # Восстанавливаем детальный ответ
+        detailed_answer = saved_data["detailed_answer"]
+        sources_text = saved_data.get("sources_text", "")
+        if sources_text:
+            response_text = f"{detailed_answer}\n\n{sources_text}"
+        else:
+            response_text = detailed_answer
+
+        # Создаем кнопку "Краткий ответ"
+        keyboard = [[InlineKeyboardButton("📝 Краткий ответ", callback_data=f"short_answer:{original_message_id}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        # Редактируем сообщение
+        if sent_message_id:
+            # Редактируем отправленное сообщение
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=sent_message_id,
+                text=response_text,
+                disable_web_page_preview=True,
+                parse_mode="HTML",
+                reply_markup=reply_markup,
+            )
+        else:
+            # Если не нашли ID отправленного сообщения, редактируем сообщение с кнопкой
+            await query.edit_message_text(
+                response_text,
+                disable_web_page_preview=True,
+                parse_mode="HTML",
+                reply_markup=reply_markup,
+            )
 
 
 async def clear_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -605,6 +741,7 @@ async def main() -> None:
 
     # Регистрируем обработчик для callback query (нажатие на inline кнопки)
     application.add_handler(CallbackQueryHandler(clear_history_callback, pattern="^clear_history_"))
+    application.add_handler(CallbackQueryHandler(short_answer_callback, pattern="^(short_answer|detailed_answer):"))
 
     # Регистрируем обработчик для всех текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
@@ -653,6 +790,7 @@ def register_handlers(application: Application) -> None:
 
     # Регистрируем обработчик для callback query (нажатие на inline кнопки)
     application.add_handler(CallbackQueryHandler(clear_history_callback, pattern="^clear_history_"))
+    application.add_handler(CallbackQueryHandler(short_answer_callback, pattern="^(short_answer|detailed_answer):"))
 
     # Регистрируем обработчик для всех текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))

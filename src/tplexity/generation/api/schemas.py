@@ -99,3 +99,42 @@ class ClearSessionResponse(BaseModel):
 
     success: bool = Field(..., description="Успешность операции")
     message: str = Field(..., description="Сообщение о результате")
+
+
+class GenerateShortAnswerRequest(BaseModel):
+    """Схема для запроса генерации краткого ответа"""
+
+    detailed_answer: str = Field(..., description="Детальный ответ для сокращения")
+    llm_provider: str | None = Field(
+        default=None,
+        description="Провайдер LLM для использования (если не указано, используется значение из config)",
+    )
+
+    @field_validator("llm_provider")
+    @classmethod
+    def validate_llm_provider(cls, v: str | None) -> str | None:
+        """Валидирует, что указанный провайдер входит в список доступных моделей"""
+        if v is None:
+            return None
+
+        # Получаем список доступных моделей из настроек
+        if llm_settings and hasattr(llm_settings, "available_models"):
+            available_models = llm_settings.available_models
+        else:
+            # Fallback: базовый список поддерживаемых провайдеров
+            available_models = ["qwen", "chatgpt", "deepseek"]
+
+        v_lower = v.lower().strip()
+        if v_lower not in available_models:
+            available_str = ", ".join(f"'{m}'" for m in available_models)
+            raise ValueError(
+                f"Провайдер '{v}' не найден в списке доступных моделей. " f"Доступные модели: {available_str}"
+            )
+
+        return v_lower
+
+
+class GenerateShortAnswerResponse(BaseModel):
+    """Схема для ответа генерации краткого ответа"""
+
+    short_answer: str = Field(..., description="Краткий ответ")

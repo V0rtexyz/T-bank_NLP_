@@ -8,6 +8,8 @@ from tplexity.generation.api.schemas import (
     ClearSessionResponse,
     GenerateRequest,
     GenerateResponse,
+    GenerateShortAnswerRequest,
+    GenerateShortAnswerResponse,
     SourceInfo,
 )
 from tplexity.generation.generation_service import GenerationService
@@ -101,4 +103,40 @@ async def clear_session(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при очистке истории сессии: {str(e)}",
+        ) from e
+
+
+@router.post("/generate-short-answer", response_model=GenerateShortAnswerResponse)
+async def generate_short_answer(
+    request: GenerateShortAnswerRequest,
+    generation: GenerationService = Depends(get_generation),
+) -> GenerateShortAnswerResponse:
+    """
+    Генерация краткого ответа на основе детального ответа
+
+    Args:
+        request: Запрос с детальным ответом для сокращения
+        generation: Экземпляр GenerationService
+
+    Returns:
+        GenerateShortAnswerResponse: Краткий ответ
+    """
+    try:
+        short_answer = await generation.generate_short_answer(
+            detailed_answer=request.detailed_answer,
+            llm_provider=request.llm_provider,
+        )
+
+        return GenerateShortAnswerResponse(short_answer=short_answer)
+    except ValueError as e:
+        logger.error(f"❌ [generation][routers] Ошибка валидации: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        logger.error(f"❌ [generation][routers] Ошибка при генерации краткого ответа: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при генерации краткого ответа: {str(e)}",
         ) from e

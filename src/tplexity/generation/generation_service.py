@@ -11,6 +11,7 @@ from tplexity.generation.prompts import (
     QUERY_REFORMULATION_PROMPT,
     REACT_DECISION_PROMPT,
     RELEVANCE_EVALUATOR_PROMPT,
+    SHORT_ANSWER_PROMPT,
     SYSTEM_PROMPT_WITH_RETRIEVER,
     SYSTEM_PROMPT_WITHOUT_RETRIEVER,
     USER_PROMPT,
@@ -621,6 +622,46 @@ class GenerationService:
         )
 
         return answer, doc_ids, metadatas, search_time, generation_time, total_time
+
+    async def generate_short_answer(
+        self,
+        detailed_answer: str,
+        llm_provider: str | None = None,
+    ) -> str:
+        """
+        Генерация краткого ответа на основе детального ответа.
+
+        Args:
+            detailed_answer: Детальный ответ для сокращения
+            llm_provider: Провайдер LLM для использования (если None, используется значение из self.llm_provider)
+
+        Returns:
+            str: Краткий ответ
+        """
+        # Выбираем провайдер LLM
+        provider = llm_provider or self.llm_provider
+        logger.info(f"🔄 [generation][generation_service] Генерация краткого ответа (провайдер: {provider})")
+
+        # Формируем промпт для краткого ответа
+        prompt = SHORT_ANSWER_PROMPT.format(detailed_answer=detailed_answer)
+
+        # Формируем список сообщений для LLM
+        messages = [
+            {"role": "system", "content": "Ты — агент генерации кратких ответов мультиагентной системы RAG."},
+            {"role": "user", "content": prompt},
+        ]
+
+        # Если указан провайдер, получаем соответствующий клиент
+        if llm_provider:
+            llm_client = get_llm(llm_provider)
+        else:
+            llm_client = self.llm_client
+
+        # Генерируем краткий ответ
+        short_answer = await llm_client.generate(messages)
+        logger.info(f"✅ [generation][generation_service] Краткий ответ сгенерирован")
+
+        return short_answer
 
     async def clear_session(self, session_id: str) -> None:
         """
