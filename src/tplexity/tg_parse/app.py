@@ -4,6 +4,7 @@ Telegram Parser микросервис
 Микросервис для мониторинга Telegram каналов, чанкирования постов и отправки данных.
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -11,10 +12,56 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from tplexity.tg_parse.api import router
+from tplexity.tg_parse.api.dependencies import (
+    get_config,
+    get_monitoring_status,
+    set_monitoring_status,
+    set_service,
+)
+from tplexity.tg_parse.monitor_service import TelegramMonitorService
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+
+async def start_monitoring_automatically():
+    """Автоматически запускает мониторинг при старте приложения"""
+    try:
+        config = get_config()
+        channels_list = config.get_channels_list() if config else []
+
+        if not config or not channels_list:
+            logger.warning("⚠️ [tg_parse] Конфигурация не загружена или список каналов пуст, мониторинг не запущен")
+            return
+
+        if not config.api_id or not config.api_hash:
+            logger.warning("⚠️ [tg_parse] Не указаны api_id или api_hash, мониторинг не запущен")
+            return
+
+        logger.info("🔄 [tg_parse] Автоматический запуск мониторинга...")
+        
+        service = TelegramMonitorService(
+            api_id=config.api_id,
+            api_hash=config.api_hash,
+            channels=channels_list,
+            session_name=config.session_name,
+            data_dir=config.data_dir,
+            webhook_url=config.webhook_url,
+            retry_interval=config.retry_interval,
+            session_string=config.session_string,
+        )
+
+        await service.initialize()
+        set_service(service)
+        
+        # Запускаем мониторинг в фоне
+        asyncio.create_task(service.start_monitoring())
+        set_monitoring_status(True)
+
+        logger.info(f"✅ [tg_parse] Мониторинг автоматически запущен для {len(channels_list)} каналов")
+    except Exception as e:
+        logger.error(f"❌ [tg_parse] Ошибка при автоматическом запуске мониторинга: {e}", exc_info=True)
 
 
 @asynccontextmanager
@@ -25,7 +72,12 @@ async def lifespan(app: FastAPI):
     Запускается при старте и остановке приложения
     """
     logger.info("🚀 [tg_parse] Запуск Telegram Parser микросервиса")
+    
+    # Автоматически запускаем мониторинг при старте
+    await start_monitoring_automatically()
+    
     yield
+    
     logger.info("🛑 [tg_parse] Остановка Telegram Parser микросервиса")
 
 

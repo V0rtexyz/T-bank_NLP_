@@ -30,11 +30,19 @@ class Settings(BaseSettings):
     api_hash: str | None = None
     phone: str | None = None
     session_name: str = "my_session"
+    session_string: str | None = None  # Строка сессии (если указана, используется вместо файла)
+
+    @field_validator("session_string", mode="before")
+    @classmethod
+    def parse_session_string(cls, v):
+        # Обрабатываем пустые строки как None
+        if v == "" or v is None:
+            return None
+        return v
 
     # Мониторинг каналов
     channels: str = "omyinvestments,alfa_investments,tb_invest_official,SberInvestments,centralbank_russia,selfinvestor"  # Список каналов через запятую
-    check_interval: int = 60
-    initial_messages_limit: int = 100
+    retry_interval: int = 60  # Интервал повторных попыток отправки неудачных постов (в секундах)
 
     # Webhook настройки
     webhook_url: str | None = None

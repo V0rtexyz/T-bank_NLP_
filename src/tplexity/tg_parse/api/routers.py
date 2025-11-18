@@ -139,9 +139,9 @@ async def start_monitoring(
             channels=channels_list,
             session_name=config.session_name,
             data_dir=config.data_dir,
-            check_interval=config.check_interval,
-            initial_messages_limit=config.initial_messages_limit,
             webhook_url=config.webhook_url,
+            retry_interval=config.retry_interval,
+            session_string=config.session_string,
         )
 
         await service.initialize()
@@ -153,7 +153,6 @@ async def start_monitoring(
         return StartMonitoringResponse(
             status="started",
             channels=config.channels,
-            check_interval=config.check_interval,
         )
     except ValueError as e:
         logger.error(f"❌ [tg_parse.api] Ошибка валидации: {e}")
@@ -209,12 +208,14 @@ async def download_messages(
     config: Settings = Depends(get_config),
 ) -> DownloadMessagesResponse:
     """
-    Скачать последние n сообщений из каждого канала
+    Скачать все доступные сообщения из каждого канала
 
     Процесс:
-    - Количество сообщений (n) настраивается в config.json (параметр initial_messages_limit)
+    - Скачивает все доступные сообщения из каждого канала (без ограничений)
     - Автоматически удаляет пустые сообщения (где поле text пустое)
     - Сохраняет результаты в data/telegram/[канал]/messages_monitor.json
+    
+    Примечание: Для загрузки исторических данных используйте скрипт load_historical_posts.py
 
     Args:
         config: Конфигурация сервиса
@@ -251,9 +252,9 @@ async def download_messages(
                 channels=channels_list,
                 session_name=config.session_name,
                 data_dir=config.data_dir,
-                check_interval=config.check_interval,
-                initial_messages_limit=config.initial_messages_limit,
                 webhook_url=config.webhook_url,
+                retry_interval=config.retry_interval,
+                session_string=config.session_string,
             )
             await service.initialize()
             set_service(service)
@@ -267,7 +268,7 @@ async def download_messages(
         )
         return DownloadMessagesResponse(
             status="success",
-            limit_per_channel=config.initial_messages_limit,
+            limit_per_channel=None,  # Без ограничений - скачиваются все доступные сообщения
             results=results,
         )
 

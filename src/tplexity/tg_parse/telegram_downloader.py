@@ -68,9 +68,21 @@ class TelegramDownloader:
         self.download_path = Path(download_path)
         self.download_path.mkdir(parents=True, exist_ok=True)
 
+        # Детальное логирование для отладки
+        print(f"🔍 [telegram_downloader.__init__] session_string получен: {session_string is not None}")
         if session_string:
+            print(f"🔍 [telegram_downloader.__init__] session_string длина: {len(session_string)}")
+            print(f"🔍 [telegram_downloader.__init__] session_string первые 30 символов: {session_string[:30]}...")
+            print(f"🔍 [telegram_downloader.__init__] session_string пустая строка: {session_string == ''}")
+        else:
+            print(f"🔍 [telegram_downloader.__init__] session_string is None, будет использован файл: {session_name}")
+
+        # ВАЖНО: session_string имеет приоритет над файлом
+        if session_string and session_string.strip():
+            print("✅ [telegram_downloader.__init__] Используется StringSession (строка сессии)")
             session = StringSession(session_string)
         else:
+            print(f"📁 [telegram_downloader.__init__] Используется файл сессии: {session_name}")
             session = session_name
 
         self.client = TelegramClient(session, api_id, api_hash)
@@ -82,23 +94,42 @@ class TelegramDownloader:
         Args:
             max_retries: Максимальное количество попыток подключения
         """
+        # Логируем информацию о сессии
+        session_info = f"session_string (длина: {len(self.session_string)})" if self.session_string else f"файл: {self.session_name}"
+        print(f"🔌 [telegram_downloader] Подключение к Telegram (сессия: {session_info})")
+        
         for attempt in range(max_retries):
             try:
+                print(f"🔄 [telegram_downloader] Попытка подключения {attempt + 1}/{max_retries}...")
                 await self.client.connect()
-                if not await self.client.is_user_authorized():
-                    print("Ошибка: Сессия не авторизована")
-                    print("Используйте generate_session.py для создания новой сессии")
+                print("✅ [telegram_downloader] Соединение установлено")
+                
+                is_authorized = await self.client.is_user_authorized()
+                print(f"🔍 [telegram_downloader] Статус авторизации: {is_authorized}")
+                
+                if not is_authorized:
+                    print("❌ [telegram_downloader] Ошибка: Сессия не авторизована")
+                    print(f"📋 [telegram_downloader] Используется: {session_info}")
+                    print("💡 [telegram_downloader] Используйте authorize_telegram.py для создания новой сессии")
                     return False
-                print("Подключено к Telegram")
+                
+                print("✅ [telegram_downloader] Подключено к Telegram и авторизовано")
                 return True
             except Exception as e:
+                error_type = type(e).__name__
+                error_msg = str(e)
+                print(f"❌ [telegram_downloader] Попытка {attempt + 1} не удалась")
+                print(f"   Тип ошибки: {error_type}")
+                print(f"   Сообщение: {error_msg}")
+                
                 if attempt < max_retries - 1:
-                    print(f"Попытка {attempt + 1} не удалась: {e}")
-                    print("Повторная попытка через 2 секунды...")
+                    print("⏳ [telegram_downloader] Повторная попытка через 2 секунды...")
                     await asyncio.sleep(2)
                 else:
-                    print(f"Не удалось подключиться после {max_retries} попыток")
-                    print(f"Ошибка: {e}")
+                    print(f"❌ [telegram_downloader] Не удалось подключиться после {max_retries} попыток")
+                    import traceback
+                    print(f"📋 [telegram_downloader] Полный traceback:")
+                    traceback.print_exc()
                     return False
 
     async def disconnect(self):
