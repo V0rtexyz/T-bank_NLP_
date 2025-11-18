@@ -39,7 +39,7 @@ class RetrieverClient:
         query: str,
         top_k: int | None = None,
         top_n: int | None = None,
-        use_rerank: bool = True,
+        use_rerank: bool = False,
         messages: list[dict[str, str]] | None = None,
     ) -> list[tuple[str, float, str, dict | None]]:
         """
@@ -191,7 +191,7 @@ class GenerationService:
         # Формируем контекст из документов
         context_parts = []
         for idx, (doc_id, score, text, _metadata) in enumerate(context_documents, 1):
-            context_parts.append(f"[Документ {idx} (ID: {doc_id}, релевантность: {score:.3f})]\n{text}")
+            context_parts.append(f"[{idx}] Документ {idx} (релевантность: {score:.3f})\n{text}")
 
         context = "\n\n".join(context_parts)
 

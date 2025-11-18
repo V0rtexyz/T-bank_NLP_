@@ -10,7 +10,7 @@ interface SearchBarProps {
 
 export default function SearchBar({ 
   onSearch, 
-  placeholder = "Ask about markets, companies, or investments...",
+  placeholder = "Спросите о рынках, компаниях или инвестициях...",
   autoFocus = false,
   large = false
 }: SearchBarProps) {

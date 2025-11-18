@@ -50,7 +50,8 @@ async def add_documents(
             success=True,
         )
     except Exception as e:
-        logger.error(f"❌ [retriever.api] Ошибка при добавлении документов: {e}")
+        error_traceback = traceback.format_exc()
+        logger.error(f"❌ [retriever.api] Ошибка при добавлении документов: {e}\n{error_traceback}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при добавлении документов: {str(e)}",

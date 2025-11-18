@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+import traceback
 
 from tplexity.llm_client import get_llm
 from tplexity.retriever.config import settings
@@ -71,8 +72,22 @@ class RetrieverService:
             prefetch_ratio=self.prefetch_ratio,
         )
 
-        # Инициализация reranker
-        self.reranker = get_reranker()
+        # Инициализация reranker (опционально)
+        self.enable_reranker = settings.enable_reranker
+        if self.enable_reranker:
+            try:
+                self.reranker = get_reranker()
+                logger.info("✅ [retriever_service] Reranker инициализирован")
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ [retriever_service] Не удалось инициализировать reranker: {e}. "
+                    f"Reranker будет отключен."
+                )
+                self.enable_reranker = False
+                self.reranker = None
+        else:
+            self.reranker = None
+            logger.info("ℹ️ [retriever_service] Reranker отключен в настройках")
 
         # Инициализация query reformulation (опционально)
         self.enable_query_reformulation = settings.enable_query_reformulation
@@ -149,7 +164,11 @@ class RetrieverService:
             await self.vector_search.add_documents(documents, ids=None, metadatas=metadatas)
             logger.info(f"✅ [retriever_service] Добавлено {len(documents)} документов в Qdrant")
         except Exception as e:
-            logger.error(f"❌ [retriever_service] Ошибка при добавлении документов в Qdrant: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"❌ [retriever_service] Ошибка при добавлении документов в Qdrant: {e}\n{error_traceback}",
+                exc_info=True,
+            )
             raise
 
     async def _reformulate_query(self, query: str, messages: list[dict[str, str]] | None = None) -> str:
@@ -204,7 +223,7 @@ class RetrieverService:
         query: str,
         top_k: int | None = None,
         top_n: int | None = None,
-        use_rerank: bool = True,
+        use_rerank: bool | None = None,
         messages: list[dict[str, str]] | None = None,
     ) -> list[tuple[str, float, str, dict | None]]:
         """
@@ -214,7 +233,7 @@ class RetrieverService:
             query (str): Поисковый запрос
             top_k (int | None): Количество документов до реранка. Если None, используется значение из config
             top_n (int | None): Количество документов после реранка (возвращаемые). Если None, используется значение из config
-            use_rerank (bool): Использовать ли reranking
+            use_rerank (bool | None): Использовать ли reranking. Если None, используется значение из config
 
         Returns:
             list[tuple[str, float, str, dict | None]]: Список кортежей (doc_id, score, document_text, metadata)
@@ -228,6 +247,7 @@ class RetrieverService:
         # Используем значения из config, если не переданы явно
         top_k = top_k or self.top_k
         top_n = top_n or self.top_n
+        use_rerank = use_rerank if use_rerank is not None else self.enable_reranker
 
         if top_k < 1:
             raise ValueError(f"top_k должен быть >= 1, получено: {top_k}")
@@ -269,7 +289,7 @@ class RetrieverService:
 
         # Шаг 2: Reranking (опционально)
         rerank_time = None
-        if use_rerank and hybrid_results:
+        if use_rerank and self.enable_reranker and self.reranker and hybrid_results:
             rerank_start_time = time.time()
             # Берем топ-k документов для reranking (или все, если их меньше)
             rerank_limit = min(top_k, len(hybrid_results))

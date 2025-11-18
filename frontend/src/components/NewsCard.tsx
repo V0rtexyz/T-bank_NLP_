@@ -1,13 +1,23 @@
 import { ExternalLink, Clock, TrendingUp } from 'lucide-react';
 import { NewsItem } from '../types';
 import { formatDistanceToNow } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
 interface NewsCardProps {
   news: NewsItem;
 }
 
+const categoryLabels: Record<string, string> = {
+  'stocks': 'Акции',
+  'crypto': 'Крипто',
+  'forex': 'Форекс',
+  'commodities': 'Сырье',
+  'bonds': 'Облигации',
+};
+
 export default function NewsCard({ news }: NewsCardProps) {
-  const timeAgo = formatDistanceToNow(new Date(news.timestamp), { addSuffix: true });
+  const timeAgo = formatDistanceToNow(new Date(news.timestamp), { addSuffix: true, locale: ru });
+  const categoryLabel = news.category ? (categoryLabels[news.category] || news.category) : null;
   
   return (
     <a
@@ -34,10 +44,10 @@ export default function NewsCard({ news }: NewsCardProps) {
           <ExternalLink size={18} className="text-tbank-gray group-hover:text-tbank-yellow transition-colors" />
         </div>
         
-        {news.category && (
+        {categoryLabel && (
           <div className="inline-flex items-center space-x-1 bg-tbank-yellow/10 text-tbank-yellow px-3 py-1 rounded-full text-xs font-semibold mb-3">
             <TrendingUp size={12} />
-            <span>{news.category}</span>
+            <span>{categoryLabel}</span>
           </div>
         )}
         

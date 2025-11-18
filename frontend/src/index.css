@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* TinkoffSans Font Family */
+@font-face {
+  font-family: 'TinkoffSans';
+  src: url('/fonts/TinkoffSans.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TinkoffSans';
+  src: url('/fonts/TinkoffSans_Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'TinkoffSans';
+  src: url('/fonts/TinkoffSans_Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   html {
     @apply antialiased;

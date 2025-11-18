@@ -23,31 +23,31 @@ export default function History() {
       const mockHistory: SearchQuery[] = [
         {
           id: '1',
-          query: 'What are the latest tech stock trends?',
+          query: 'Какие последние тренды в технологических акциях?',
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
           resultCount: 8,
         },
         {
           id: '2',
-          query: 'Tell me about recent IPO news',
+          query: 'Расскажи о последних новостях IPO',
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
           resultCount: 5,
         },
         {
           id: '3',
-          query: 'Federal Reserve policy changes',
+          query: 'Изменения политики Федеральной резервной системы',
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
           resultCount: 12,
         },
         {
           id: '4',
-          query: 'Bitcoin price analysis',
+          query: 'Анализ цены Bitcoin',
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
           resultCount: 15,
         },
         {
           id: '5',
-          query: 'European market outlook',
+          query: 'Прогноз европейского рынка',
           timestamp: new Date(Date.now() - 1000 * 60 * 60 * 96).toISOString(),
           resultCount: 7,
         },
@@ -72,7 +72,7 @@ export default function History() {
   };
   
   const handleClearAll = () => {
-    if (window.confirm('Are you sure you want to clear all history?')) {
+    if (window.confirm('Вы уверены, что хотите очистить всю историю?')) {
       setQueries([]);
       // TODO: Also clear from backend/local storage
     }
@@ -84,16 +84,16 @@ export default function History() {
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
     
     if (diffInHours < 24) {
-      return 'Today';
+      return 'Сегодня';
     } else if (diffInHours < 48) {
-      return 'Yesterday';
+      return 'Вчера';
     } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return date.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric', year: 'numeric' });
     }
   };
   
   const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', { 
+    return new Date(timestamp).toLocaleTimeString('ru-RU', { 
       hour: '2-digit', 
       minute: '2-digit' 
     });
@@ -110,8 +110,8 @@ export default function History() {
                 <Clock size={24} className="text-tbank-black" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold">Search History</h1>
-                <p className="text-tbank-gray">Review and re-run your previous queries</p>
+                <h1 className="text-3xl font-bold">История поиска</h1>
+                <p className="text-tbank-gray">Просмотрите и повторите ваши предыдущие запросы</p>
               </div>
             </div>
             
@@ -121,29 +121,29 @@ export default function History() {
                 className="btn-secondary flex items-center space-x-2"
               >
                 <Trash2 size={18} />
-                <span className="hidden md:inline">Clear All</span>
+                <span className="hidden md:inline">Очистить всё</span>
               </button>
             )}
           </div>
           
           {/* Content */}
           {isLoading ? (
-            <LoadingSpinner message="Loading history..." />
+            <LoadingSpinner message="Загрузка истории..." />
           ) : queries.length === 0 ? (
             // Empty state
             <div className="text-center py-16">
               <div className="w-20 h-20 bg-tbank-black-light rounded-full flex items-center justify-center mx-auto mb-6">
                 <Search size={36} className="text-tbank-gray" />
               </div>
-              <h2 className="text-2xl font-bold mb-3">No Search History</h2>
+              <h2 className="text-2xl font-bold mb-3">История поиска пуста</h2>
               <p className="text-tbank-gray mb-8">
-                Your search history will appear here once you start asking questions
+                Ваша история поиска появится здесь, как только вы начнете задавать вопросы
               </p>
               <button
                 onClick={() => navigate('/chat')}
                 className="btn-primary inline-flex items-center space-x-2"
               >
-                <span>Start Searching</span>
+                <span>Начать поиск</span>
                 <ArrowRight size={18} />
               </button>
             </div>
@@ -164,9 +164,9 @@ export default function History() {
                       </h3>
                     </div>
                     <div className="flex items-center space-x-4 text-sm text-tbank-gray ml-7">
-                      <span>{formatDate(query.timestamp)} at {formatTime(query.timestamp)}</span>
+                      <span>{formatDate(query.timestamp)} в {formatTime(query.timestamp)}</span>
                       <span>•</span>
-                      <span>{query.resultCount} sources found</span>
+                      <span>Найдено источников: {query.resultCount}</span>
                     </div>
                   </div>
                   
@@ -174,7 +174,7 @@ export default function History() {
                     <button
                       onClick={(e) => handleDeleteQuery(query.id, e)}
                       className="p-2 rounded-lg hover:bg-tbank-gray-dark transition-colors"
-                      title="Delete query"
+                      title="Удалить запрос"
                     >
                       <Trash2 size={18} className="text-tbank-gray hover:text-red-400" />
                     </button>

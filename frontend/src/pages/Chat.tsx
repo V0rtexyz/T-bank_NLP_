@@ -62,50 +62,50 @@ export default function Chat() {
       const mockSources: TelegramSource[] = [
         {
           id: '1',
-          channelName: 'Investment Insights',
+          channelName: 'Инвестиционные инсайты',
           channelUsername: 'invest_insights',
           messageId: 12345,
-          text: 'Major tech stocks showing bullish signals as market rebounds...',
+          text: 'Крупные технологические акции показывают бычьи сигналы на фоне восстановления рынка...',
           timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
           url: 'https://t.me/invest_insights/12345',
-          preview: 'Major tech stocks showing bullish signals as market rebounds...',
+          preview: 'Крупные технологические акции показывают бычьи сигналы на фоне восстановления рынка...',
         },
         {
           id: '2',
-          channelName: 'Market Analysis',
+          channelName: 'Анализ рынка',
           channelUsername: 'market_analysis',
           messageId: 67890,
-          text: 'Tech sector ETFs gained 2.3% today following positive earnings reports...',
+          text: 'ETF технологического сектора выросли на 2,3% сегодня после положительных отчетов о прибыли...',
           timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
           url: 'https://t.me/market_analysis/67890',
-          preview: 'Tech sector ETFs gained 2.3% today following positive earnings...',
+          preview: 'ETF технологического сектора выросли на 2,3% сегодня после положительных отчетов...',
         },
         {
           id: '3',
-          channelName: 'Financial News',
+          channelName: 'Финансовые новости',
           channelUsername: 'fin_news',
           messageId: 11223,
-          text: 'NASDAQ composite up 1.8%, driven primarily by semiconductor stocks...',
+          text: 'Индекс NASDAQ вырос на 1,8%, в основном за счет акций полупроводниковых компаний...',
           timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
           url: 'https://t.me/fin_news/11223',
-          preview: 'NASDAQ composite up 1.8%, driven primarily by semiconductor...',
+          preview: 'Индекс NASDAQ вырос на 1,8%, в основном за счет акций полупроводниковых компаний...',
         },
         {
           id: '4',
-          channelName: 'Tech Investor',
+          channelName: 'Технологический инвестор',
           channelUsername: 'tech_investor',
           messageId: 44556,
-          text: 'AI companies leading the charge with strong Q4 performance metrics...',
+          text: 'Компании ИИ лидируют с сильными показателями Q4...',
           timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
           url: 'https://t.me/tech_investor/44556',
-          preview: 'AI companies leading the charge with strong Q4 performance...',
+          preview: 'Компании ИИ лидируют с сильными показателями Q4...',
         },
       ];
       
       const assistantMessage: Message = {
         id: loadingMessage.id,
         type: 'assistant',
-        content: `Based on recent market analysis, tech stocks are currently showing strong positive momentum. The NASDAQ composite has risen 1.8%, with semiconductor and AI-focused companies leading the gains.\n\nKey highlights:\n• Major tech ETFs gained 2.3% following positive earnings reports\n• AI companies demonstrated particularly strong Q4 performance\n• Semiconductor stocks are driving significant market gains\n• Overall bullish signals across the technology sector\n\nThis trend appears to be supported by solid fundamentals and positive investor sentiment toward innovation-focused companies.`,
+        content: `Согласно недавнему анализу рынка, технологические акции в настоящее время демонстрируют сильный положительный импульс. Индекс NASDAQ вырос на 1,8%, при этом лидерами роста являются компании, специализирующиеся на полупроводниках и ИИ.\n\nКлючевые моменты:\n• Крупные технологические ETF выросли на 2,3% после положительных отчетов о прибыли\n• Компании ИИ продемонстрировали особенно сильные показатели Q4\n• Акции полупроводниковых компаний обеспечивают значительный рост рынка\n• В целом бычьи сигналы по всему технологическому сектору\n\nЭта тенденция, похоже, поддерживается солидными фундаментальными показателями и позитивными настроениями инвесторов в отношении компаний, ориентированных на инновации.`,
         timestamp: new Date().toISOString(),
         sources: mockSources,
         isLoading: false,
@@ -134,10 +134,10 @@ export default function Chat() {
                 <Send size={36} className="text-tbank-black" />
               </div>
               <h1 className="text-4xl font-bold mb-4">
-                Ask <span className="text-tbank-yellow">T-Plexity</span>
+                Спросите <span className="text-tbank-yellow">T-Plexity</span>
               </h1>
               <p className="text-tbank-gray-light text-lg">
-                Get AI-powered insights from real-time investment news
+                Получайте ИИ-аналитику из новостей об инвестициях в реальном времени
               </p>
             </div>
             
@@ -164,7 +164,7 @@ export default function Chat() {
                 <div className="max-w-4xl mx-auto">
                   <SearchBar
                     onSearch={handleSearch}
-                    placeholder="Ask a follow-up question..."
+                    placeholder="Задайте уточняющий вопрос..."
                   />
                 </div>
               </div>

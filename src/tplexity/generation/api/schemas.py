@@ -53,7 +53,7 @@ class GenerateRequest(BaseModel):
             available_models = llm_settings.available_models
         else:
             # Fallback: базовый список поддерживаемых провайдеров
-            available_models = ["qwen", "yandexgpt", "chatgpt", "deepseek"]
+            available_models = ["qwen", "chatgpt", "deepseek"]
         
         v_lower = v.lower().strip()
         if v_lower not in available_models:

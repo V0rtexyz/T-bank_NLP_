@@ -18,7 +18,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['TinkoffSans', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
       boxShadow: {
         'tbank': '0 4px 16px rgba(255, 221, 45, 0.1)',

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import traceback
 from typing import Literal
 from uuid import uuid4
 
@@ -171,7 +172,11 @@ class VectorSearch:
                 f"✅ [retriever][vector_search] Добавлено {len(documents)} документов в коллекцию {self.collection_name}"
             )
         except Exception as e:
-            logger.error(f"❌ [retriever][vector_search] Ошибка при добавлении документов в Qdrant: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"❌ [retriever][vector_search] Ошибка при добавлении документов в Qdrant: {e}\n{error_traceback}",
+                exc_info=True,
+            )
             raise
 
     async def search(

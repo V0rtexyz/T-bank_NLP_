@@ -5,12 +5,12 @@ interface QuickQuestionsProps {
 }
 
 const questions = [
-  "What are the latest market trends?",
-  "Tell me about recent IPO news",
-  "What's happening with tech stocks?",
-  "Recent cryptocurrency updates",
-  "Federal Reserve policy changes",
-  "Emerging market opportunities",
+  "Какие последние тренды на рынке?",
+  "Расскажи о последних новостях IPO",
+  "Что происходит с технологическими акциями?",
+  "Последние обновления по криптовалютам",
+  "Изменения политики Федеральной резервной системы",
+  "Возможности развивающихся рынков",
 ];
 
 export default function QuickQuestions({ onQuestionClick }: QuickQuestionsProps) {
@@ -18,7 +18,7 @@ export default function QuickQuestions({ onQuestionClick }: QuickQuestionsProps)
     <div className="space-y-4">
       <div className="flex items-center space-x-2 text-tbank-gray">
         <Zap size={16} className="text-tbank-yellow" />
-        <span className="text-sm font-semibold">Quick Questions</span>
+        <span className="text-sm font-semibold">Быстрые вопросы</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {questions.map((question, index) => (

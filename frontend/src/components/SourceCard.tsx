@@ -1,6 +1,7 @@
 import { ExternalLink, Clock } from 'lucide-react';
 import { TelegramSource } from '../types';
 import { formatDistanceToNow } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
 interface SourceCardProps {
   source: TelegramSource;
@@ -8,7 +9,7 @@ interface SourceCardProps {
 }
 
 export default function SourceCard({ source, index }: SourceCardProps) {
-  const timeAgo = formatDistanceToNow(new Date(source.timestamp), { addSuffix: true });
+  const timeAgo = formatDistanceToNow(new Date(source.timestamp), { addSuffix: true, locale: ru });
   
   return (
     <a

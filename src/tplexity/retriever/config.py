@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     enable_query_reformulation: bool = True
     query_reformulation_llm_provider: str = "qwen"
 
+    # Reranker настройки
+    enable_reranker: bool = False
+
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).parent / ".env"),
         env_file_encoding="utf-8",

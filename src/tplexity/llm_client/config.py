@@ -13,9 +13,9 @@ class Settings(BaseSettings):
     timeout: int = 60
 
     # Qwen настройки
-    qwen_model: str = "QuantTrio/Qwen3-VL-32B-Instruct-AWQ"
+    qwen_model: str = "QuantTrio/Qwen3-VL-30B-A3B-Instruct-AWQ"
     qwen_api_key: str = "sk-no-key-required"
-    qwen_base_url: str = "http://195.209.210.28:8000/v1"
+    qwen_base_url: str = "http://localhost:8100/v1"
 
     # YandexGPT настройки
     yandexgpt_model: str = "yandexgpt-lite"

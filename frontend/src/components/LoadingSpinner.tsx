@@ -4,7 +4,7 @@ interface LoadingSpinnerProps {
   message?: string;
 }
 
-export default function LoadingSpinner({ message = "Loading..." }: LoadingSpinnerProps) {
+export default function LoadingSpinner({ message = "Загрузка..." }: LoadingSpinnerProps) {
   return (
     <div className="flex flex-col items-center justify-center py-12">
       <Loader2 size={40} className="text-tbank-yellow animate-spin mb-4" />

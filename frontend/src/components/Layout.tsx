@@ -14,10 +14,10 @@ export default function Layout({ children }: LayoutProps) {
   };
   
   const navItems = [
-    { path: '/', label: 'Home', icon: Search },
-    { path: '/chat', label: 'Chat', icon: MessageSquare },
-    { path: '/news', label: 'News', icon: Newspaper },
-    { path: '/history', label: 'History', icon: Clock },
+    { path: '/', label: 'Главная', icon: Search },
+    { path: '/chat', label: 'Чат', icon: MessageSquare },
+    { path: '/news', label: 'Новости', icon: Newspaper },
+    { path: '/history', label: 'История', icon: Clock },
   ];
   
   return (
@@ -35,7 +35,7 @@ export default function Layout({ children }: LayoutProps) {
                 <h1 className="text-xl font-bold">
                   T-<span className="text-tbank-yellow">Plexity</span>
                 </h1>
-                <p className="text-xs text-tbank-gray">Investment Intelligence</p>
+                <p className="text-xs text-tbank-gray">Инвестиционная аналитика</p>
               </div>
             </Link>
             
@@ -84,23 +84,23 @@ export default function Layout({ children }: LayoutProps) {
             <div>
               <h3 className="font-bold text-lg mb-3">T-Plexity</h3>
               <p className="text-tbank-gray text-sm">
-                Real-time investment news aggregation powered by AI. 
-                Stay informed with the latest market insights.
+                Агрегация новостей об инвестициях в реальном времени на базе ИИ. 
+                Будьте в курсе последних рыночных инсайтов.
               </p>
             </div>
             <div>
-              <h3 className="font-bold text-lg mb-3">Features</h3>
+              <h3 className="font-bold text-lg mb-3">Возможности</h3>
               <ul className="space-y-2 text-sm text-tbank-gray">
-                <li className="link-hover cursor-pointer">Real-time News</li>
-                <li className="link-hover cursor-pointer">AI-Powered Insights</li>
-                <li className="link-hover cursor-pointer">Source Transparency</li>
-                <li className="link-hover cursor-pointer">Investment Analysis</li>
+                <li className="link-hover cursor-pointer">Новости в реальном времени</li>
+                <li className="link-hover cursor-pointer">ИИ-аналитика</li>
+                <li className="link-hover cursor-pointer">Прозрачность источников</li>
+                <li className="link-hover cursor-pointer">Инвестиционный анализ</li>
               </ul>
             </div>
             <div>
-              <h3 className="font-bold text-lg mb-3">Connect</h3>
+              <h3 className="font-bold text-lg mb-3">Связь</h3>
               <p className="text-tbank-gray text-sm mb-3">
-                Built with modern technology for financial professionals.
+                Создано с использованием современных технологий для финансовых специалистов.
               </p>
               <div className="flex space-x-3">
                 <div className="w-8 h-8 bg-tbank-yellow rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
@@ -110,7 +110,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           </div>
           <div className="mt-8 pt-6 border-t border-tbank-gray-dark text-center text-sm text-tbank-gray">
-            <p>© 2025 T-Plexity. Intelligent Investment Intelligence.</p>
+            <p>© 2025 T-Plexity. Интеллектуальная инвестиционная аналитика.</p>
           </div>
         </div>
       </footer>

@@ -2,13 +2,14 @@ import { Message } from '../types';
 import { User, Sparkles, Loader2 } from 'lucide-react';
 import SourceCard from './SourceCard';
 import { formatDistanceToNow } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
 interface MessageBubbleProps {
   message: Message;
 }
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
-  const timeAgo = formatDistanceToNow(new Date(message.timestamp), { addSuffix: true });
+  const timeAgo = formatDistanceToNow(new Date(message.timestamp), { addSuffix: true, locale: ru });
   
   if (message.type === 'user') {
     return (
@@ -36,7 +37,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             {message.isLoading ? (
               <div className="flex items-center space-x-2 text-tbank-gray">
                 <Loader2 size={20} className="animate-spin" />
-                <span>Analyzing sources...</span>
+                <span>Анализ источников...</span>
               </div>
             ) : (
               <>
@@ -52,7 +53,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             <div className="space-y-3">
               <h4 className="text-sm font-semibold text-tbank-gray flex items-center">
                 <span className="w-1 h-4 bg-tbank-yellow rounded-full mr-2"></span>
-                Sources ({message.sources.length})
+                Источники ({message.sources.length})
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {message.sources.map((source, index) => (

@@ -16,31 +16,31 @@ export default function Landing() {
   const features = [
     {
       icon: Zap,
-      title: "Real-Time Aggregation",
-      description: "Fresh publications from selected investment Telegram channels appear instantly in our system."
+      title: "Агрегация в реальном времени",
+      description: "Свежие публикации из выбранных инвестиционных Telegram-каналов появляются мгновенно в нашей системе."
     },
     {
       icon: Sparkles,
-      title: "AI-Powered Insights",
-      description: "Ask questions about markets, companies, economics. Get concise, accurate answers from our LLM."
+      title: "ИИ-аналитика",
+      description: "Задавайте вопросы о рынках, компаниях, экономике. Получайте краткие и точные ответы от нашей LLM."
     },
     {
       icon: Shield,
-      title: "Source Transparency",
-      description: "Every answer includes direct links to original Telegram messages. Full transparency guaranteed."
+      title: "Прозрачность источников",
+      description: "Каждый ответ включает прямые ссылки на оригинальные сообщения Telegram. Полная прозрачность гарантирована."
     },
     {
       icon: Clock,
-      title: "Minimal Delay",
-      description: "Near-instant indexing ensures you can query news within seconds of publication."
+      title: "Минимальная задержка",
+      description: "Почти мгновенная индексация позволяет запрашивать новости в течение секунд после публикации."
     }
   ];
   
   const stats = [
-    { value: "50+", label: "Telegram Channels" },
-    { value: "<30s", label: "Average Delay" },
-    { value: "24/7", label: "Live Monitoring" },
-    { value: "100%", label: "Source Linked" }
+    { value: "50+", label: "Telegram-каналов" },
+    { value: "<30с", label: "Средняя задержка" },
+    { value: "24/7", label: "Мониторинг онлайн" },
+    { value: "100%", label: "Связано с источниками" }
   ];
   
   return (
@@ -56,25 +56,25 @@ export default function Landing() {
           <div className="max-w-4xl mx-auto text-center mb-12">
             <div className="inline-flex items-center space-x-2 bg-tbank-yellow/10 border border-tbank-yellow/20 rounded-full px-4 py-2 mb-6">
               <TrendingUp size={16} className="text-tbank-yellow" />
-              <span className="text-sm font-semibold text-tbank-yellow">Investment Intelligence Platform</span>
+              <span className="text-sm font-semibold text-tbank-yellow">Платформа инвестиционной аналитики</span>
             </div>
             
             <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-              Ask Anything About
+              Спросите что угодно о
               <br />
-              <span className="text-tbank-yellow">Investment Markets</span>
+              <span className="text-tbank-yellow">Инвестиционных рынках</span>
             </h1>
             
             <p className="text-xl text-tbank-gray-light mb-12 max-w-2xl mx-auto">
-              Get AI-powered insights from real-time Telegram investment channels. 
-              Every answer backed by transparent sources.
+              Получайте ИИ-аналитику из Telegram-каналов об инвестициях в реальном времени. 
+              Каждый ответ подкреплен прозрачными источниками.
             </p>
             
             {/* Search Bar */}
             <SearchBar onSearch={handleSearch} large autoFocus />
             
             <p className="text-sm text-tbank-gray mt-4">
-              Try asking: "What are the latest tech stock trends?" or "Recent Fed policy updates"
+              Попробуйте спросить: "Какие последние тренды в технологических акциях?" или "Последние обновления политики ФРС"
             </p>
           </div>
           
@@ -104,11 +104,11 @@ export default function Landing() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold mb-4">
-              How <span className="text-tbank-yellow">T-Plexity</span> Works
+              Как работает <span className="text-tbank-yellow">T-Plexity</span>
             </h2>
             <p className="text-tbank-gray-light text-lg max-w-2xl mx-auto">
-              Combining real-time data aggregation with advanced AI to deliver 
-              accurate, source-backed investment insights.
+              Объединяем агрегацию данных в реальном времени с продвинутым ИИ для предоставления 
+              точной, подкрепленной источниками инвестиционной аналитики.
             </p>
           </div>
           
@@ -135,16 +135,16 @@ export default function Landing() {
           <div className="max-w-4xl mx-auto">
             <div className="card bg-gradient-to-r from-tbank-black-light to-tbank-gray-dark border-2 border-tbank-yellow/20 text-center p-12">
               <h2 className="text-4xl font-bold mb-4">
-                Ready to Start?
+                Готовы начать?
               </h2>
               <p className="text-tbank-gray-light text-lg mb-8 max-w-2xl mx-auto">
-                Join thousands of investors who trust T-Plexity for real-time market intelligence.
+                Присоединяйтесь к тысячам инвесторов, которые доверяют T-Plexity для получения аналитики рынка в реальном времени.
               </p>
               <button
                 onClick={() => navigate('/chat')}
                 className="btn-primary inline-flex items-center space-x-2 text-lg"
               >
-                <span>Start Asking Questions</span>
+                <span>Начать задавать вопросы</span>
                 <ArrowRight size={20} />
               </button>
             </div>

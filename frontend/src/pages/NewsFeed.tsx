@@ -9,7 +9,14 @@ export default function NewsFeed() {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   
-  const categories = ['all', 'stocks', 'crypto', 'forex', 'commodities', 'bonds'];
+  const categories = [
+    { value: 'all', label: 'Все' },
+    { value: 'stocks', label: 'Акции' },
+    { value: 'crypto', label: 'Крипто' },
+    { value: 'forex', label: 'Форекс' },
+    { value: 'commodities', label: 'Сырье' },
+    { value: 'bonds', label: 'Облигации' }
+  ];
   
   useEffect(() => {
     fetchNews();
@@ -27,8 +34,8 @@ export default function NewsFeed() {
           id: '1',
           channelName: 'Market Watch Pro',
           channelUsername: 'market_watch_pro',
-          title: 'Tech Giants Lead Market Rally with Strong Q4 Earnings',
-          snippet: 'Major technology companies posted impressive fourth-quarter results, driving the NASDAQ to new highs. Apple, Microsoft, and Google parent Alphabet all exceeded analyst expectations...',
+          title: 'Технологические гиганты ведут рост рынка с сильными результатами Q4',
+          snippet: 'Крупные технологические компании показали впечатляющие результаты четвертого квартала, подняв NASDAQ до новых высот. Apple, Microsoft и материнская компания Google Alphabet превзошли ожидания аналитиков...',
           timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
           url: 'https://t.me/market_watch_pro/12345',
           category: 'stocks',
@@ -37,8 +44,8 @@ export default function NewsFeed() {
           id: '2',
           channelName: 'Crypto Insights',
           channelUsername: 'crypto_insights',
-          title: 'Bitcoin Surges Past $45K on Institutional Adoption News',
-          snippet: 'Bitcoin reached a new 2024 high today following announcements from three major institutions about their cryptocurrency investment strategies...',
+          title: 'Bitcoin пробил отметку $45K на новостях об институциональном принятии',
+          snippet: 'Bitcoin достиг нового максимума 2024 года сегодня после объявлений трех крупных институтов о своих стратегиях инвестирования в криптовалюты...',
           timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
           url: 'https://t.me/crypto_insights/67890',
           category: 'crypto',
@@ -47,8 +54,8 @@ export default function NewsFeed() {
           id: '3',
           channelName: 'Investment Daily',
           channelUsername: 'investment_daily',
-          title: 'Federal Reserve Signals Potential Rate Cut in Q2',
-          snippet: 'Fed Chairman Powell hinted at possible interest rate adjustments during testimony before Congress, citing improved inflation metrics...',
+          title: 'Федеральная резервная система сигнализирует о возможном снижении ставки во Q2',
+          snippet: 'Председатель ФРС Пауэлл намекнул на возможные корректировки процентных ставок во время выступления перед Конгрессом, ссылаясь на улучшение показателей инфляции...',
           timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
           url: 'https://t.me/investment_daily/11223',
           category: 'bonds',
@@ -57,8 +64,8 @@ export default function NewsFeed() {
           id: '4',
           channelName: 'Trading Signals',
           channelUsername: 'trading_signals',
-          title: 'Gold Prices Stabilize as Dollar Weakens',
-          snippet: 'Precious metals showed strength today with gold holding steady above $2,000/oz as the dollar index declined...',
+          title: 'Цены на золото стабилизируются на фоне ослабления доллара',
+          snippet: 'Драгоценные металлы показали силу сегодня, золото удерживается выше $2000/унция на фоне снижения индекса доллара...',
           timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
           url: 'https://t.me/trading_signals/44556',
           category: 'commodities',
@@ -67,8 +74,8 @@ export default function NewsFeed() {
           id: '5',
           channelName: 'Forex News',
           channelUsername: 'forex_news',
-          title: 'EUR/USD Breaks Key Resistance Level',
-          snippet: 'The euro gained ground against the dollar today, breaking through the 1.12 resistance level for the first time in three months...',
+          title: 'EUR/USD пробил ключевой уровень сопротивления',
+          snippet: 'Евро укрепился по отношению к доллару сегодня, пробив уровень сопротивления 1.12 впервые за три месяца...',
           timestamp: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
           url: 'https://t.me/forex_news/77889',
           category: 'forex',
@@ -77,8 +84,8 @@ export default function NewsFeed() {
           id: '6',
           channelName: 'Emerging Markets',
           channelUsername: 'emerging_markets',
-          title: 'Asian Markets Rally on Strong Manufacturing Data',
-          snippet: 'Stock markets across Asia posted gains following better-than-expected manufacturing PMI data from China, Japan, and South Korea...',
+          title: 'Азиатские рынки растут на сильных данных по производству',
+          snippet: 'Фондовые рынки по всей Азии показали рост после лучших, чем ожидалось, данных PMI по производству из Китая, Японии и Южной Кореи...',
           timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
           url: 'https://t.me/emerging_markets/99000',
           category: 'stocks',
@@ -107,8 +114,8 @@ export default function NewsFeed() {
               <TrendingUp size={24} className="text-tbank-black" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold">Latest News</h1>
-              <p className="text-tbank-gray">Real-time updates from investment channels</p>
+              <h1 className="text-3xl font-bold">Последние новости</h1>
+              <p className="text-tbank-gray">Обновления в реальном времени из инвестиционных каналов</p>
             </div>
           </div>
           
@@ -116,19 +123,19 @@ export default function NewsFeed() {
           <div className="flex items-center space-x-3 overflow-x-auto pb-2">
             <div className="flex items-center space-x-2 text-tbank-gray flex-shrink-0">
               <Filter size={18} />
-              <span className="text-sm font-semibold">Filter:</span>
+              <span className="text-sm font-semibold">Фильтр:</span>
             </div>
             {categories.map(cat => (
               <button
-                key={cat}
-                onClick={() => setFilter(cat)}
+                key={cat.value}
+                onClick={() => setFilter(cat.value)}
                 className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex-shrink-0 ${
-                  filter === cat
+                  filter === cat.value
                     ? 'bg-tbank-yellow text-tbank-black'
                     : 'bg-tbank-black-light text-tbank-gray hover:text-white hover:bg-tbank-gray-dark'
                 }`}
               >
-                {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                {cat.label}
               </button>
             ))}
           </div>
@@ -136,10 +143,10 @@ export default function NewsFeed() {
         
         {/* News Grid */}
         {isLoading ? (
-          <LoadingSpinner message="Loading latest news..." />
+          <LoadingSpinner message="Загрузка последних новостей..." />
         ) : news.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-tbank-gray">No news available for this category</p>
+            <p className="text-tbank-gray">Новостей нет для этой категории</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
