@@ -1,44 +1,44 @@
 {
   "relevance": {
-    "mean": 0.9064102564102564,
+    "mean": 1.0,
     "median": 1.0,
-    "std": 0.2687425743778757,
-    "min": 0.0,
+    "std": NaN,
+    "min": 1.0,
     "max": 1.0,
-    "count": 858
+    "count": 1
   },
   "faithfulness": {
-    "mean": 0.9250582750582751,
-    "median": 1.0,
-    "std": 0.2610705164696247,
-    "min": 0.0,
-    "max": 1.0,
-    "count": 858
+    "mean": 0.95,
+    "median": 0.95,
+    "std": NaN,
+    "min": 0.95,
+    "max": 0.95,
+    "count": 1
   },
   "completeness": {
-    "mean": 0.90506993006993,
+    "mean": 1.0,
     "median": 1.0,
-    "std": 0.2673838111316845,
-    "min": 0.0,
+    "std": NaN,
+    "min": 1.0,
     "max": 1.0,
-    "count": 858
+    "count": 1
   },
   "off_topic_rate": {
-    "mean": 0.018181818181818184,
+    "mean": 0.0,
     "median": 0.0,
-    "std": 0.07243363869381854,
+    "std": NaN,
     "min": 0.0,
-    "max": 1.0,
-    "count": 858
+    "max": 0.0,
+    "count": 1
   },
   "latency_ms": {
-    "mean": 37870.46612142683,
-    "median": 34189.72873687744,
-    "std": 15612.245991611542,
-    "min": 7319.873571395874,
-    "max": 149555.513381958,
-    "count": 858
+    "mean": 15282.034873962402,
+    "median": 15282.034873962402,
+    "std": NaN,
+    "min": 15282.034873962402,
+    "max": 15282.034873962402,
+    "count": 1
   },
-  "total_examples": 858,
-  "judge_errors": 62
+  "total_examples": 1,
+  "judge_errors": 0
 }

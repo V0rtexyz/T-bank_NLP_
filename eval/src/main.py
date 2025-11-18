@@ -339,6 +339,12 @@ def main():
         help="Размер батча для асинхронной обработки запросов (default: 10)"
     )
     
+    parser.add_argument(
+        "--show-answers",
+        action="store_true",
+        help="Выводить ответы модели в консоль при генерации"
+    )
+    
     args = parser.parse_args()
     
     # Настраиваем пути
@@ -446,6 +452,13 @@ def main():
         try:
             # Генерируем ответ асинхронно (generation сам делает поиск через retriever)
             answer, sources_info, latency_ms = await client.generate_async(question)
+            
+            # Выводим ответ, если включен флаг
+            if args.show_answers:
+                logger.info("=" * 80)
+                logger.info(f"Вопрос: {question}")
+                logger.info(f"Ответ ({latency_ms:.2f}ms): {answer}")
+                logger.info("=" * 80)
             
             # Получаем тексты документов из retriever API (те же, что использовал generation)
             if sources_info:
