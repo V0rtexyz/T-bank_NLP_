@@ -15,6 +15,8 @@ import httpx
 from telethon import events
 from telethon.tl.types import Message
 
+from tplexity.tg_parse.post_deletion_service import PostDeletionService
+from tplexity.tg_parse.relevance_analyzer import calculate_delete_date, determine_relevance_days
 from tplexity.tg_parse.telegram_downloader import TelegramDownloader
 
 logger = logging.getLogger(__name__)
@@ -42,12 +44,24 @@ class TelegramMonitorService:
         webhook_url: str | None = None,
         retry_interval: int = 60,
         session_string: str | None = None,
+        llm_provider: str = "qwen",
+        qdrant_host: str | None = None,
+        qdrant_port: int | None = None,
+        qdrant_api_key: str | None = None,
+        qdrant_collection_name: str | None = None,
+        qdrant_timeout: int = 60,
     ):
         self.api_id = api_id
         self.api_hash = api_hash
         self.channels = channels
         self.webhook_url = webhook_url
         self.retry_interval = retry_interval
+        self.llm_provider = llm_provider
+        self.qdrant_host = qdrant_host
+        self.qdrant_port = qdrant_port
+        self.qdrant_api_key = qdrant_api_key
+        self.qdrant_collection_name = qdrant_collection_name
+        self.qdrant_timeout = qdrant_timeout
 
         # Определяем корень проекта (4 уровня выше от monitor_service.py)
         self.project_root = Path(__file__).parent.parent.parent.parent
@@ -63,11 +77,15 @@ class TelegramMonitorService:
         # Очередь для повторных попыток отправки неудачных постов
         self.failed_posts: deque[FailedPost] = deque()
         self.retry_task: asyncio.Task | None = None
-
+        self.deletion_task: asyncio.Task | None = None
+        
         # Словарь для отслеживания каналов (username -> entity)
         self.channel_entities: dict[str, Any] = {}
         # Словарь для хранения названий каналов (username -> title)
         self.channel_titles: dict[str, str] = {}
+        
+        # Сервис удаления постов (инициализируется при необходимости)
+        self.deletion_service: PostDeletionService | None = None
 
     async def initialize(self):
         """Инициализация: загрузка существующих данных."""
@@ -210,6 +228,35 @@ class TelegramMonitorService:
         # Запускаем фоновую задачу для повторных попыток
         self.retry_task = asyncio.create_task(self._retry_failed_posts_loop())
 
+        # Инициализируем и запускаем сервис удаления постов, если настроены параметры Qdrant
+        if (
+            self.qdrant_host
+            and self.qdrant_port
+            and self.qdrant_collection_name
+        ):
+            try:
+                self.deletion_service = PostDeletionService(
+                    qdrant_host=self.qdrant_host,
+                    qdrant_port=self.qdrant_port,
+                    qdrant_api_key=self.qdrant_api_key,
+                    qdrant_collection_name=self.qdrant_collection_name,
+                    qdrant_timeout=self.qdrant_timeout,
+                )
+                # Запускаем удаление при старте
+                asyncio.create_task(self._run_deletion_task(initial_run=True))
+                # Запускаем периодическую задачу удаления (каждые 24 часа)
+                self.deletion_task = asyncio.create_task(self._deletion_loop())
+                logger.info("✅ [monitor_service] Сервис удаления постов инициализирован и запущен")
+            except Exception as e:
+                logger.error(
+                    f"❌ [monitor_service] Ошибка при инициализации сервиса удаления постов: {e}",
+                    exc_info=True,
+                )
+        else:
+            logger.warning(
+                "⚠️ [monitor_service] Параметры Qdrant не настроены, сервис удаления постов не запущен"
+            )
+
         # Telethon автоматически обрабатывает события через внутренний цикл,
         # когда клиент подключен и обработчики зарегистрированы
         logger.info("✅ [tg_parse][monitor_service] Мониторинг запущен, ожидание новых сообщений...")
@@ -316,6 +363,22 @@ class TelegramMonitorService:
             # Добавляем название канала
             channel_title = self.channel_titles.get(channel, channel)
             metadata["channel_title"] = channel_title
+
+            # Определяем актуальность поста через LLM и добавляем дату удаления
+            try:
+                relevance_days, llm_response = await determine_relevance_days(text, self.llm_provider)
+                delete_date = calculate_delete_date(relevance_days)
+                metadata["delete_date"] = delete_date
+                logger.info(
+                    f"📅 [monitor_service] Для поста {post_dict.get('id')} из {channel} определена дата удаления: {delete_date} "
+                    f"(актуальность: {relevance_days} дней, ответ LLM: {llm_response})"
+                )
+            except Exception as e:
+                logger.error(
+                    f"❌ [monitor_service] Ошибка при определении актуальности поста {post_dict.get('id')}: {e}",
+                    exc_info=True
+                )
+                # Продолжаем без delete_date, пост не будет удален автоматически
 
             # Формируем документ для Retriever API
             document = {"text": text, "metadata": metadata}
@@ -467,6 +530,59 @@ class TelegramMonitorService:
             except Exception as e:
                 logger.error(f"❌ [tg_parse][monitor_service] Ошибка при отключении клиента: {e}")
 
-        logger.info(
-            f"✅ [tg_parse][monitor_service] Мониторинг остановлен. В очереди повторных попыток: {len(self.failed_posts)} постов"
-        )
+        # Останавливаем задачу удаления
+        if self.deletion_task:
+            self.deletion_task.cancel()
+            try:
+                await self.deletion_task
+            except asyncio.CancelledError:
+                pass
+
+        logger.info(f"✅ [monitor_service] Мониторинг остановлен. В очереди повторных попыток: {len(self.failed_posts)} постов")
+
+    async def _run_deletion_task(self, initial_run: bool = False) -> None:
+        """
+        Запускает задачу удаления устаревших постов
+
+        Args:
+            initial_run: Если True, это первый запуск при старте сервиса
+        """
+        if not self.deletion_service:
+            return
+
+        try:
+            if initial_run:
+                logger.info("🗑️ [monitor_service] Запуск удаления устаревших постов при старте...")
+            else:
+                logger.info("🗑️ [monitor_service] Запуск периодического удаления устаревших постов...")
+
+            deleted_count = await self.deletion_service.delete_expired_posts()
+            logger.info(f"✅ [monitor_service] Удаление завершено: удалено {deleted_count} постов")
+        except Exception as e:
+            logger.error(
+                f"❌ [monitor_service] Ошибка при удалении устаревших постов: {e}",
+                exc_info=True,
+            )
+
+    async def _deletion_loop(self) -> None:
+        """Периодическая задача для удаления устаревших постов (каждые 24 часа)"""
+        logger.info("🔄 [monitor_service] Запущена периодическая задача удаления постов (каждые 24 часа)")
+
+        while self.is_running:
+            try:
+                # Ждем 24 часа (86400 секунд)
+                await asyncio.sleep(86400)
+
+                if not self.is_running:
+                    break
+
+                await self._run_deletion_task(initial_run=False)
+
+            except asyncio.CancelledError:
+                logger.info("🛑 [monitor_service] Периодическая задача удаления остановлена")
+                break
+            except Exception as e:
+                logger.error(
+                    f"❌ [monitor_service] Ошибка в периодической задаче удаления: {e}",
+                    exc_info=True,
+                )

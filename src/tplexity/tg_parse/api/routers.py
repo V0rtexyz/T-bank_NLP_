@@ -140,6 +140,12 @@ async def start_monitoring(
             webhook_url=config.webhook_url,
             retry_interval=config.retry_interval,
             session_string=config.session_string,
+            llm_provider=config.llm_provider,
+            qdrant_host=config.qdrant_host,
+            qdrant_port=config.qdrant_port,
+            qdrant_api_key=config.qdrant_api_key,
+            qdrant_collection_name=config.qdrant_collection_name,
+            qdrant_timeout=config.qdrant_timeout,
         )
 
         await service.initialize()
@@ -253,6 +259,12 @@ async def download_messages(
                 webhook_url=config.webhook_url,
                 retry_interval=config.retry_interval,
                 session_string=config.session_string,
+                llm_provider=config.llm_provider,
+                qdrant_host=config.qdrant_host,
+                qdrant_port=config.qdrant_port,
+                qdrant_api_key=config.qdrant_api_key,
+                qdrant_collection_name=config.qdrant_collection_name,
+                qdrant_timeout=config.qdrant_timeout,
             )
             await service.initialize()
             set_service(service)

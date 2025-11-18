@@ -50,6 +50,16 @@ class Settings(BaseSettings):
     # Директория данных
     data_dir: str = "data"
 
+    # LLM настройки для определения актуальности
+    llm_provider: str = "qwen"  # Провайдер LLM для определения актуальности постов
+
+    # Qdrant настройки для удаления постов
+    qdrant_host: str | None = None
+    qdrant_port: int | None = None
+    qdrant_api_key: str | None = None
+    qdrant_collection_name: str | None = None
+    qdrant_timeout: int = 60
+
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).parent / ".env"),
         env_file_encoding="utf-8",
