@@ -8,13 +8,12 @@ from tplexity.generation.config import settings
 from tplexity.generation.memory_service import MemoryService
 from tplexity.generation.prompts import (
     REACT_DECISION_PROMPT,
-    SHORT_ANSWER_PROMPT,
-    SYSTEM_PROMPT_SHORT_ANSWER,
-    SYSTEM_PROMPT_WITHOUT_RETRIEVER,
     SYSTEM_PROMPT_WITH_RETRIEVER,
+    SYSTEM_PROMPT_WITHOUT_RETRIEVER,
     USER_PROMPT,
 )
 from tplexity.llm_client import get_llm
+from tplexity.retriever.retry_utils import retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -22,19 +21,29 @@ logger = logging.getLogger(__name__)
 class RetrieverClient:
     """Клиент для взаимодействия с Retriever API"""
 
-    def __init__(self, base_url: str, timeout: float = 60.0):
+    def __init__(self, base_url: str, timeout: float = 60.0, max_retries: int = 3):
         """
         Инициализация клиента
 
         Args:
             base_url: Базовый URL Retriever API (например, http://localhost:8010)
             timeout: Таймаут запросов в секундах
+            max_retries: Максимальное количество попыток при ошибках
         """
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        logger.info(f"🔄 [retriever_client] Инициализирован клиент для {self.base_url}")
+        self.max_retries = max_retries
 
-    async def search(
+        # Создаем connection pool для переиспользования соединений
+        timeout_config = httpx.Timeout(timeout, connect=10.0)
+        limits = httpx.Limits(max_keepalive_connections=10, max_connections=20)
+        self.client = httpx.AsyncClient(timeout=timeout_config, limits=limits)
+
+        logger.info(
+            f"🔄 [retriever_client] Инициализирован клиент для {self.base_url} (connection pool: max_connections=20)"
+        )
+
+    async def _search_internal(
         self,
         query: str,
         top_k: int | None = None,
@@ -43,7 +52,7 @@ class RetrieverClient:
         messages: list[dict[str, str]] | None = None,
     ) -> list[tuple[str, float, str, dict | None]]:
         """
-        Поиск релевантных документов
+        Внутренний метод поиска (используется с retry)
 
         Args:
             query: Поисковый запрос
@@ -67,20 +76,53 @@ class RetrieverClient:
         if messages is not None:
             payload["messages"] = messages
 
+        response = await self.client.post(f"{self.base_url}/retriever/search", json=payload)
+        response.raise_for_status()
+
+        data = response.json()
+        results = data.get("results", [])
+
+        # Преобразуем в формат (doc_id, score, text, metadata)
+        return [(r["doc_id"], r["score"], r["text"], r.get("metadata")) for r in results]
+
+    async def search(
+        self,
+        query: str,
+        top_k: int | None = None,
+        top_n: int | None = None,
+        use_rerank: bool = False,
+        messages: list[dict[str, str]] | None = None,
+    ) -> list[tuple[str, float, str, dict | None]]:
+        """
+        Поиск релевантных документов с retry механизмом
+
+        Args:
+            query: Поисковый запрос
+            top_k: Количество документов до реранка
+            top_n: Количество документов после реранка
+            use_rerank: Использовать ли reranking
+            messages: История диалога для переформулирования запроса
+
+        Returns:
+            list[tuple[str, float, str, dict | None]]: Список кортежей (doc_id, score, text, metadata)
+        """
         try:
-            timeout_config = httpx.Timeout(self.timeout)
-            async with httpx.AsyncClient(timeout=timeout_config) as client:
-                response = await client.post(f"{self.base_url}/retriever/search", json=payload)
-                response.raise_for_status()
-
-                data = response.json()
-                results = data.get("results", [])
-
-                # Преобразуем в формат (doc_id, score, text, metadata)
-                return [(r["doc_id"], r["score"], r["text"], r.get("metadata")) for r in results]
-
+            results = await retry_with_backoff(
+                self._search_internal,
+                max_retries=self.max_retries,
+                initial_delay=1.0,
+                max_delay=30.0,
+                exponential_base=2.0,
+                jitter=True,
+                query=query,
+                top_k=top_k,
+                top_n=top_n,
+                use_rerank=use_rerank,
+                messages=messages,
+            )
+            return results
         except httpx.TimeoutException:
-            logger.error("⏱️ [retriever_client] Таймаут при запросе к Retriever API")
+            logger.error("⏱️ [retriever_client] Таймаут при запросе к Retriever API после всех попыток")
             raise
         except httpx.HTTPStatusError as e:
             logger.error(f"❌ [retriever_client] HTTP ошибка от Retriever API: {e.response.status_code}")
@@ -88,6 +130,11 @@ class RetrieverClient:
         except Exception as e:
             logger.error(f"❌ [retriever_client] Ошибка при запросе к Retriever API: {e}")
             raise
+
+    async def close(self) -> None:
+        """Закрывает соединение с Retriever API"""
+        await self.client.aclose()
+        logger.info("🔌 [retriever_client] Соединение с Retriever API закрыто")
 
 
 class GenerationService:
@@ -143,7 +190,7 @@ class GenerationService:
         Returns:
             bool: True если нужен retriever, False если не нужен
         """
-        
+
         history_text = "Истории диалога нет."
         if session_id:
             history = await self.memory_service.get_history(session_id)
@@ -176,6 +223,48 @@ class GenerationService:
                 f"⚠️ [generation_service] Ошибка при принятии решения ReAct агентом: {e}. Используется retriever по умолчанию."
             )
             return True
+
+    def _validate_documents(
+        self, documents: list[tuple[str, float, str, dict | None]], min_score: float = 0.0, min_text_length: int = 10
+    ) -> list[tuple[str, float, str, dict | None]]:
+        """
+        Валидирует и фильтрует документы по релевантности и качеству
+
+        Args:
+            documents: Список кортежей (doc_id, score, text, metadata)
+            min_score: Минимальный score для включения документа
+            min_text_length: Минимальная длина текста документа
+
+        Returns:
+            list[tuple[str, float, str, dict | None]]: Отфильтрованный список документов
+        """
+        validated = []
+        for doc_id, score, text, metadata in documents:
+            # Проверяем score
+            if score < min_score:
+                logger.debug(f"🔍 [generation_service] Документ {doc_id} отфильтрован: score {score:.3f} < {min_score}")
+                continue
+
+            # Проверяем наличие и длину текста
+            if not text or not isinstance(text, str):
+                logger.debug(f"🔍 [generation_service] Документ {doc_id} отфильтрован: пустой или некорректный текст")
+                continue
+
+            if len(text.strip()) < min_text_length:
+                logger.debug(
+                    f"🔍 [generation_service] Документ {doc_id} отфильтрован: длина текста {len(text)} < {min_text_length}"
+                )
+                continue
+
+            validated.append((doc_id, score, text, metadata))
+
+        if len(validated) < len(documents):
+            logger.info(
+                f"🔍 [generation_service] Валидация документов: {len(documents)} -> {len(validated)} "
+                f"(отфильтровано {len(documents) - len(validated)})"
+            )
+
+        return validated
 
     def _build_prompt(self, query: str, context_documents: list[tuple[str, float, str, dict | None]]) -> str:
         """
@@ -225,7 +314,7 @@ class GenerationService:
         max_tokens: int | None = None,
         llm_provider: str | None = None,
         session_id: str | None = None,
-    ) -> tuple[str, str, list[str], list[dict | None], float | None, float, float]:
+    ) -> tuple[str, list[str], list[dict | None], float | None, float, float]:
         """
         Генерация ответа с использованием RAG
 
@@ -239,8 +328,8 @@ class GenerationService:
             session_id: Идентификатор сессии для сохранения истории диалога (если None, история не сохраняется)
 
         Returns:
-            tuple[str, str, list[str], list[dict | None], float | None, float, float]: 
-            (подробный ответ, краткий ответ, список doc_ids, список метаданных, время поиска, время генерации, общее время)
+            tuple[str, list[str], list[dict | None], float | None, float, float]:
+            (ответ, список doc_ids, список метаданных, время поиска, время генерации, общее время)
 
         Raises:
             ValueError: Если запрос пуст
@@ -262,7 +351,9 @@ class GenerationService:
         react_start_time = time.time()
         use_retriever = await self._should_use_retriever(query, session_id, llm_provider)
         react_time = time.time() - react_start_time
-        logger.info(f"✅ [generation_service] ReAct агент: {'использовать' if use_retriever else 'НЕ использовать'} retriever ({react_time:.2f}с)")
+        logger.info(
+            f"✅ [generation_service] ReAct агент: {'использовать' if use_retriever else 'НЕ использовать'} retriever ({react_time:.2f}с)"
+        )
 
         context_documents = []
         search_time = None
@@ -276,18 +367,22 @@ class GenerationService:
 
             # Шаг 1: Поиск релевантных документов через Retriever API
             search_start_time = time.time()
-            context_documents = await self.retriever_client.search(
+            raw_documents = await self.retriever_client.search(
                 query=query, top_k=top_k, top_n=None, use_rerank=use_rerank, messages=messages
             )
             search_time = time.time() - search_start_time
-            logger.info(f"✅ [generation_service] Поиск завершен: {len(context_documents)} документов за {search_time:.2f}с")
+            logger.info(
+                f"✅ [generation_service] Поиск завершен: {len(raw_documents)} документов за {search_time:.2f}с"
+            )
+
+            # Валидация и фильтрация документов
+            context_documents = self._validate_documents(raw_documents, min_score=0.0, min_text_length=10)
 
             if not context_documents:
-                logger.warning("⚠️ [generation_service] Релевантные документы не найдены")
+                logger.warning("⚠️ [generation_service] Релевантные документы не найдены или не прошли валидацию")
                 error_message = "К сожалению, я не нашел релевантной информации в базе знаний для ответа на ваш вопрос."
                 total_time = time.time() - total_start_time
                 return (
-                    error_message,
                     error_message,
                     [],
                     [],
@@ -331,32 +426,20 @@ class GenerationService:
             llm_client = self.llm_client
 
         generation_start_time = time.time()
-        detailed_answer = await llm_client.generate(messages, temperature=temperature, max_tokens=max_tokens)
-        detailed_generation_time = time.time() - generation_start_time
-        logger.info(f"✅ [generation_service] Подробный ответ сгенерирован за {detailed_generation_time:.2f}с (модель: {llm_client.model})")
-
-        # Шаг 5: Генерация краткого ответа на основе подробного
-        short_answer_start_time = time.time()
-        short_answer_prompt = SHORT_ANSWER_PROMPT.format(detailed_answer=detailed_answer)
-        # Добавляем системный промпт для генерации краткого ответа
-        short_answer_messages = [
-            {"role": "system", "content": SYSTEM_PROMPT_SHORT_ANSWER},
-            {"role": "user", "content": short_answer_prompt}
-        ]
-        short_answer = await llm_client.generate(short_answer_messages, temperature=0.3, max_tokens=500)
-        short_generation_time = time.time() - short_answer_start_time
+        answer = await llm_client.generate(messages, temperature=temperature, max_tokens=max_tokens)
         generation_time = time.time() - generation_start_time
-        logger.info(f"✅ [generation_service] Генерация завершена за {generation_time:.2f}с (подробный: {detailed_generation_time:.2f}с, краткий: {short_generation_time:.2f}с)")
+        logger.info(
+            f"✅ [generation_service] Ответ сгенерирован за {generation_time:.2f}с (модель: {llm_client.model})"
+        )
 
-        # Шаг 6: Сохраняем историю диалога в память (если указан session_id)
+        # Шаг 5: Сохраняем историю диалога в память (если указан session_id)
         # Сохраняем только user и assistant сообщения, системный промпт не сохраняется
-        # Сохраняем подробный ответ в историю
         if session_id:
             try:
-                # Добавляем оригинальный запрос пользователя (без контекста документов) и подробный ответ ассистента
+                # Добавляем оригинальный запрос пользователя (без контекста документов) и ответ ассистента
                 # Сохраняем оригинальный query, а не prompt с контекстом, чтобы история была чище
                 await self.memory_service.add_message(session_id, "user", query)
-                await self.memory_service.add_message(session_id, "assistant", detailed_answer)
+                await self.memory_service.add_message(session_id, "assistant", answer)
 
                 # Обновляем TTL сессии
                 await self.memory_service.update_ttl(session_id)
@@ -372,9 +455,11 @@ class GenerationService:
         # Вычисляем общее время
         total_time = time.time() - total_start_time
         search_str = f"{search_time:.2f}с" if search_time is not None else "N/A"
-        logger.info(f"✅ [generation_service] Обработка завершена за {total_time:.2f}с (поиск: {search_str}, генерация: {generation_time:.2f}с)")
+        logger.info(
+            f"✅ [generation_service] Обработка завершена за {total_time:.2f}с (поиск: {search_str}, генерация: {generation_time:.2f}с)"
+        )
 
-        return detailed_answer, short_answer, doc_ids, metadatas, search_time, generation_time, total_time
+        return answer, doc_ids, metadatas, search_time, generation_time, total_time
 
     async def clear_session(self, session_id: str) -> None:
         """
@@ -386,7 +471,9 @@ class GenerationService:
         await self.memory_service.clear_history(session_id)
 
     async def close(self) -> None:
-        """Закрытие LLM клиента и сервиса памяти"""
+        """Закрытие LLM клиента, Retriever клиента и сервиса памяти"""
+        if hasattr(self, "retriever_client"):
+            await self.retriever_client.close()
         if hasattr(self, "llm_client") and hasattr(self.llm_client, "client"):
             await self.llm_client.client.close()
         if hasattr(self, "memory_service"):

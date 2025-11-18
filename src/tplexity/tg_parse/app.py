@@ -14,7 +14,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from tplexity.tg_parse.api import router
 from tplexity.tg_parse.api.dependencies import (
     get_config,
-    get_monitoring_status,
     set_monitoring_status,
     set_service,
 )
@@ -40,7 +39,7 @@ async def start_monitoring_automatically():
             return
 
         logger.info("🔄 [tg_parse] Автоматический запуск мониторинга...")
-        
+
         service = TelegramMonitorService(
             api_id=config.api_id,
             api_hash=config.api_hash,
@@ -54,7 +53,7 @@ async def start_monitoring_automatically():
 
         await service.initialize()
         set_service(service)
-        
+
         # Запускаем мониторинг в фоне
         asyncio.create_task(service.start_monitoring())
         set_monitoring_status(True)
@@ -72,12 +71,12 @@ async def lifespan(app: FastAPI):
     Запускается при старте и остановке приложения
     """
     logger.info("🚀 [tg_parse] Запуск Telegram Parser микросервиса")
-    
+
     # Автоматически запускаем мониторинг при старте
     await start_monitoring_automatically()
-    
+
     yield
-    
+
     logger.info("🛑 [tg_parse] Остановка Telegram Parser микросервиса")
 
 

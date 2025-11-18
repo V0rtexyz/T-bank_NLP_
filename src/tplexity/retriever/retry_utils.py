@@ -5,8 +5,9 @@
 import asyncio
 import logging
 import random
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +16,13 @@ T = TypeVar("T")
 
 class RetryableError(Exception):
     """Исключение, которое можно повторить"""
+
     pass
 
 
 class NonRetryableError(Exception):
     """Исключение, которое нельзя повторить"""
+
     pass
 
 
@@ -63,7 +66,9 @@ def is_retryable_error(error: Exception) -> bool:
         return True
 
     # Проверяем строковое представление
-    if any(retryable in error_str for retryable in ["timeout", "connection", "network", "429", "500", "502", "503", "504"]):
+    if any(
+        retryable in error_str for retryable in ["timeout", "connection", "network", "429", "500", "502", "503", "504"]
+    ):
         return True
 
     return False
@@ -108,9 +113,7 @@ async def retry_with_backoff(
 
             # Проверяем, можно ли повторить
             if not is_retryable_error(e):
-                logger.warning(
-                    f"⚠️ [retry] Невозможно повторить запрос: {type(e).__name__}: {e}"
-                )
+                logger.warning(f"⚠️ [retry] Невозможно повторить запрос: {type(e).__name__}: {e}")
                 raise
 
             # Если это последняя попытка, выбрасываем исключение
@@ -121,7 +124,7 @@ async def retry_with_backoff(
                 raise
 
             # Вычисляем задержку с exponential backoff
-            delay = min(initial_delay * (exponential_base ** attempt), max_delay)
+            delay = min(initial_delay * (exponential_base**attempt), max_delay)
 
             # Добавляем jitter (случайную задержку до 25% от delay)
             if jitter:
@@ -162,6 +165,7 @@ def retry_async(
     Returns:
         Декоратор
     """
+
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -175,6 +179,7 @@ def retry_async(
                 *args,
                 **kwargs,
             )
-        return wrapper
-    return decorator
 
+        return wrapper
+
+    return decorator

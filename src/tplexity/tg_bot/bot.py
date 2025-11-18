@@ -6,7 +6,6 @@ Telegram бот с интеграцией Generation API микросервис�
 import asyncio
 import logging
 import re
-import time
 
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
@@ -47,26 +46,6 @@ def get_clear_history_confirmation_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_show_detailed_answer_keyboard(message_key: str):
-    """Создает inline клавиатуру с кнопкой для показа подробного ответа."""
-    keyboard = [
-        [InlineKeyboardButton("📖 Показать подробный ответ", callback_data=f"show_detailed_{message_key}")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-
-def get_answer_actions_keyboard(message_key: str, is_detailed: bool = False):
-    """Создает inline клавиатуру с действиями для ответа."""
-    keyboard = []
-    if is_detailed:
-        keyboard.append([InlineKeyboardButton("📝 Показать краткий ответ", callback_data=f"show_short_{message_key}")])
-    else:
-        keyboard.append([InlineKeyboardButton("📖 Показать подробный ответ", callback_data=f"show_detailed_{message_key}")])
-    return InlineKeyboardMarkup(keyboard)
-
-
-
-
 def escape_html(text: str) -> str:
     """
     Экранирует HTML символы в тексте для безопасного использования в Telegram HTML.
@@ -77,43 +56,38 @@ def escape_html(text: str) -> str:
     Returns:
         str: Экранированный текст
     """
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
 def markdown_to_html(text: str) -> str:
     """
     Преобразует Markdown форматирование в HTML для Telegram.
-    
+
     Преобразования:
     - **текст** → <b>текст</b> (жирный)
     - *текст* → <i>текст</i> (курсив, если не внутри **)
     - `текст` → <code>текст</code> (код)
-    
+
     Args:
         text: Текст с Markdown форматированием
-        
+
     Returns:
         str: Текст с HTML форматированием
     """
     if not text:
         return text
-    
+
     # Сначала обрабатываем код (обратные кавычки) - самый специфичный формат
-    text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
-    
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+
     # Затем обрабатываем жирный текст **текст**
     # Используем non-greedy match для корректной обработки нескольких вхождений
-    text = re.sub(r'\*\*([^*]+?)\*\*', r'<b>\1</b>', text)
-    
+    text = re.sub(r"\*\*([^*]+?)\*\*", r"<b>\1</b>", text)
+
     # Обрабатываем курсив *текст* (только если это не часть **)
     # Проверяем, что перед * нет другого * и после тоже
-    text = re.sub(r'(?<!\*)\*([^*]+?)\*(?!\*)', r'<i>\1</i>', text)
-    
+    text = re.sub(r"(?<!\*)\*([^*]+?)\*(?!\*)", r"<i>\1</i>", text)
+
     return text
 
 
@@ -238,20 +212,20 @@ def make_citations_clickable(text: str, citation_map: dict[int, str]) -> str:
 
     # Паттерн для поиска отдельных цитат: [1], [2], [3] и т.д.
     # Обрабатываем каждую цитату отдельно, чтобы [1][2] стало двумя отдельными ссылками
-    pattern = r'\[(\d+)\]'
+    pattern = r"\[(\d+)\]"
 
     def replace_citation(match):
         citation_text = match.group(0)  # [1]
         number = int(match.group(1))  # 1
-        
+
         # Проверяем, есть ли ссылка для этого номера
         link = citation_map.get(number)
-        
+
         if link:
             # Экранируем текст цитаты для HTML
-            citation_text_escaped = citation_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            citation_text_escaped = citation_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             # Экранируем ссылку для безопасности
-            link_escaped = link.replace('&', '&amp;')
+            link_escaped = link.replace("&", "&amp;")
             return f'<a href="{link_escaped}">{citation_text_escaped}</a>'
         else:
             # Если ссылки нет, оставляем как есть
@@ -314,18 +288,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 • Отвечать на вопросы о финансовых рынках и новостях
 • Работать на самых актуальных данных (минимальная задержка)
 • Показывать источники — каждый ответ с ссылками на конкретные сообщения из каналов
-• Давать краткие и точные ответы с рыночным контекстом
+• Давать точные ответы с рыночным контекстом
 
 <b>📝 Как пользоваться:</b>
 Просто напишите ваш вопрос о рынках или новостях, и я найду актуальную информацию!
 
 Используйте кнопки меню для управления настройками.
     """
-    await update.message.reply_text(
-        welcome_message, 
-        reply_markup=get_keyboard(),
-        parse_mode="HTML"
-    )
+    await update.message.reply_text(welcome_message, reply_markup=get_keyboard(), parse_mode="HTML")
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -341,7 +311,7 @@ T-Plexity — интеллектуальная система, которая в
 • Каждый ответ сопровождается ссылками на первоисточники (конкретные сообщения из каналов)
 
 <b>💡 Как использовать:</b>
-Просто напишите вопрос о рынках или новостях — я найду актуальную информацию и дам краткий, точный ответ с рыночным контекстом.
+Просто напишите вопрос о рынках или новостях — я найду актуальную информацию и дам точный ответ с рыночным контекстом.
 
 <b>⚙️ Доступные команды:</b>
 /start — Перезапустить бота
@@ -352,16 +322,11 @@ T-Plexity — интеллектуальная система, которая в
 ℹ️ Помощь — показать эту справку
 
 <b>✨ Особенности:</b>
-• Ответы могут быть краткими или подробными
 • Источники отображаются под каждым ответом с прямыми ссылками
 • История диалога сохраняется для контекста
 • Актуальность данных — минимальная задержка между публикацией и возможностью ответить
     """
-    await update.message.reply_text(
-        help_text,
-        reply_markup=get_keyboard(),
-        parse_mode="HTML"
-    )
+    await update.message.reply_text(help_text, reply_markup=get_keyboard(), parse_mode="HTML")
 
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -375,7 +340,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "⚠️ <b>Вы уверены, что хотите очистить историю диалога?</b>\n\n"
             "Все контекстные данные будут удалены, и диалог начнется заново.",
             reply_markup=get_clear_history_confirmation_keyboard(),
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
 
@@ -392,7 +357,7 @@ T-Plexity — интеллектуальная система, которая в
 • Каждый ответ сопровождается ссылками на первоисточники (конкретные сообщения из каналов)
 
 <b>💡 Как использовать:</b>
-Просто напишите вопрос о рынках или новостях — я найду актуальную информацию и дам краткий, точный ответ с рыночным контекстом.
+Просто напишите вопрос о рынках или новостях — я найду актуальную информацию и дам точный ответ с рыночным контекстом.
 
 <b>⚙️ Доступные команды:</b>
 /start — Перезапустить бота
@@ -403,16 +368,11 @@ T-Plexity — интеллектуальная система, которая в
 ℹ️ Помощь — показать эту справку
 
 <b>✨ Особенности:</b>
-• Ответы могут быть краткими или подробными
 • Источники отображаются под каждым ответом с прямыми ссылками
 • История диалога сохраняется для контекста
 • Актуальность данных — минимальная задержка между публикацией и возможностью ответить
         """
-        await update.message.reply_text(
-            help_text,
-            reply_markup=get_keyboard(),
-            parse_mode="HTML"
-        )
+        await update.message.reply_text(help_text, reply_markup=get_keyboard(), parse_mode="HTML")
         return
 
     # Получаем клиент сервиса из контекста приложения
@@ -423,7 +383,7 @@ T-Plexity — интеллектуальная система, которая в
             "❌ <b>Ошибка:</b> Сервис генерации недоступен.\n\n"
             "Пожалуйста, попробуйте позже или обратитесь к администратору.",
             reply_markup=get_keyboard(),
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         logger.error("Generation client not found in bot_data")
         return
@@ -441,7 +401,7 @@ T-Plexity — интеллектуальная система, которая в
         session_id = f"tg:{user_id}"
 
         # Отправляем запрос в Generation API с выбранной моделью и session_id
-        detailed_answer, short_answer, sources, search_time, generation_time, total_time = await generation_client.send_message(
+        answer, _, sources, search_time, generation_time, total_time = await generation_client.send_message(
             user_message, llm_provider=selected_model, session_id=session_id
         )
 
@@ -465,56 +425,23 @@ T-Plexity — интеллектуальная система, которая в
         citation_map = build_citation_map(sources, max_sources=5)
 
         # Преобразуем Markdown в HTML (если LLM вернул Markdown)
-        short_answer_html = markdown_to_html(short_answer)
-        detailed_answer_html = markdown_to_html(detailed_answer)
-        
-        # Делаем цитаты кликабельными в ответах
-        short_answer_with_citations = make_citations_clickable(short_answer_html, citation_map)
-        detailed_answer_with_citations = make_citations_clickable(detailed_answer_html, citation_map)
+        answer_html = markdown_to_html(answer)
 
-        # Формируем подробный ответ с источниками и временем генерации
-        # Источники отображаются до времени генерации
-        if sources_text:
-            detailed_answer_with_timing = f"{detailed_answer_with_citations}\n\n{sources_text}\n\n{timing_info}"
-        else:
-            detailed_answer_with_timing = f"{detailed_answer_with_citations}\n\n{timing_info}"
+        # Делаем цитаты кликабельными в ответе
+        answer_with_citations = make_citations_clickable(answer_html, citation_map)
 
         logger.info(
             f"📋 [tg_bot] Отформатированный текст источников: {sources_text[:100] if sources_text else 'пусто'}..."
         )
 
-        # Объединяем краткий ответ и источники (источники до времени генерации)
+        # Формируем полный ответ с источниками и временем генерации
         if sources_text:
-            response_text = f"{short_answer_with_citations}\n\n{sources_text}"
-            sent_message = await update.message.reply_text(
-                response_text,
-                reply_markup=None,  # Кнопку добавим после отправки
-                disable_web_page_preview=True,
-                parse_mode="HTML"
-            )
+            response_text = f"{answer_with_citations}\n\n{sources_text}\n\n{timing_info}"
         else:
-            response_text = short_answer_with_citations
-            logger.warning("⚠️ [tg_bot] Источники не были добавлены к ответу")
-            sent_message = await update.message.reply_text(
-                response_text, 
-                reply_markup=None,
-                parse_mode="HTML"
-            )
+            response_text = f"{answer_with_citations}\n\n{timing_info}"
 
-        # Сохраняем подробный и краткий ответы в user_data для последующего использования
-        # Используем chat_id и message_id для уникального ключа
-        chat_id = update.effective_chat.id
-        message_id = sent_message.message_id
-        message_key = f"{chat_id}_{message_id}"
-        context.user_data[message_key] = detailed_answer_with_timing
-        context.user_data[f"{message_key}_short"] = short_answer_with_citations
-        context.user_data[f"{message_key}_sources"] = sources_text
-        context.user_data[f"{message_key}_citation_map"] = citation_map  # Сохраняем маппинг для последующего использования
-
-        # Редактируем сообщение, добавляя кнопку
-        await sent_message.edit_reply_markup(
-            reply_markup=get_answer_actions_keyboard(message_key, is_detailed=False)
-        )
+        # Отправляем полный ответ
+        await update.message.reply_text(response_text, disable_web_page_preview=True, parse_mode="HTML")
 
     except Exception as e:
         logger.error(f"Ошибка при обработке сообщения: {e}", exc_info=True)
@@ -524,93 +451,8 @@ T-Plexity — интеллектуальная система, которая в
             f"<i>Детали: {escape_html(str(e))}</i>\n\n"
             f"Пожалуйста, попробуйте еще раз или обратитесь к администратору.",
             reply_markup=get_keyboard(),
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
-
-
-async def show_detailed_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработчик показа подробного ответа через inline кнопки."""
-    query = update.callback_query
-
-    # Отвечаем на callback query
-    await query.answer()
-
-    if query.data and query.data.startswith("show_detailed_"):
-        message_key = query.data.replace("show_detailed_", "")
-        detailed_answer = context.user_data.get(message_key)
-        sources_text = context.user_data.get(f"{message_key}_sources", "")
-
-        if not detailed_answer:
-            await query.edit_message_text(
-                "❌ <b>Ошибка</b>\n\nК сожалению, подробный ответ недоступен.",
-                reply_markup=None,
-                parse_mode="HTML"
-            )
-            logger.warning(f"⚠️ [tg_bot] Подробный ответ не найден для ключа: {message_key}")
-            return
-
-        # Формируем новый текст с подробным ответом
-        # detailed_answer уже содержит источники и время генерации, но нужно убедиться, что источники отображаются правильно
-        if sources_text:
-            # Если в detailed_answer уже есть источники, не дублируем их
-            # Просто используем сохраненный ответ как есть
-            new_text = detailed_answer
-        else:
-            new_text = detailed_answer
-
-        # Заменяем сообщение на подробный ответ с кнопкой возврата
-        try:
-            await query.edit_message_text(
-                new_text,
-                reply_markup=get_answer_actions_keyboard(message_key, is_detailed=True),
-                disable_web_page_preview=True if sources_text else None,
-                parse_mode="HTML"
-            )
-            logger.info(f"✅ [tg_bot] Подробный ответ показан для пользователя {update.effective_user.username}")
-        except Exception as e:
-            logger.error(f"❌ [tg_bot] Ошибка при замене сообщения: {e}")
-            await query.answer("❌ Ошибка при отображении подробного ответа.", show_alert=True)
-
-
-async def show_short_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработчик показа краткого ответа через inline кнопки."""
-    query = update.callback_query
-
-    # Отвечаем на callback query
-    await query.answer()
-
-    if query.data and query.data.startswith("show_short_"):
-        message_key = query.data.replace("show_short_", "")
-        short_answer = context.user_data.get(f"{message_key}_short")
-        sources_text = context.user_data.get(f"{message_key}_sources", "")
-
-        if not short_answer:
-            await query.edit_message_text(
-                "❌ <b>Ошибка</b>\n\nК сожалению, краткий ответ недоступен.",
-                reply_markup=None,
-                parse_mode="HTML"
-            )
-            logger.warning(f"⚠️ [tg_bot] Краткий ответ не найден для ключа: {message_key}")
-            return
-
-        # Формируем новый текст с кратким ответом и источниками (источники до времени генерации)
-        if sources_text:
-            new_text = f"{short_answer}\n\n{sources_text}"
-        else:
-            new_text = short_answer
-
-        # Заменяем сообщение на краткий ответ с кнопкой показа подробного
-        try:
-            await query.edit_message_text(
-                new_text,
-                reply_markup=get_answer_actions_keyboard(message_key, is_detailed=False),
-                disable_web_page_preview=True if sources_text else None,
-                parse_mode="HTML"
-            )
-            logger.info(f"✅ [tg_bot] Краткий ответ показан для пользователя {update.effective_user.username}")
-        except Exception as e:
-            logger.error(f"❌ [tg_bot] Ошибка при замене сообщения: {e}")
-            await query.answer("❌ Ошибка при отображении краткого ответа.", show_alert=True)
 
 
 async def clear_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -628,7 +470,7 @@ async def clear_history_callback(update: Update, context: ContextTypes.DEFAULT_T
             await query.edit_message_text(
                 "❌ <b>Ошибка</b>\n\nСервис генерации недоступен. Пожалуйста, попробуйте позже.",
                 reply_markup=None,
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
             logger.error("Generation client not found in bot_data")
             return
@@ -641,25 +483,20 @@ async def clear_history_callback(update: Update, context: ContextTypes.DEFAULT_T
             # Очищаем историю
             await generation_client.clear_session(session_id)
             await query.edit_message_text(
-                "✅ <b>История очищена!</b>\n\n"
-                "Все данные диалога удалены. Вы можете начать новый диалог.",
+                "✅ <b>История очищена!</b>\n\n" "Все данные диалога удалены. Вы можете начать новый диалог.",
                 reply_markup=None,
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
             logger.info(f"Пользователь {update.effective_user.username} очистил историю диалога")
         except Exception as e:
             logger.error(f"Ошибка при очистке истории: {e}", exc_info=True)
             await query.edit_message_text(
-                f"❌ <b>Ошибка при очистке истории</b>\n\n<i>{str(e)}</i>",
-                reply_markup=None,
-                parse_mode="HTML"
+                f"❌ <b>Ошибка при очистке истории</b>\n\n<i>{str(e)}</i>", reply_markup=None, parse_mode="HTML"
             )
 
     elif query.data == "clear_history_no":
         await query.edit_message_text(
-            "✅ <b>Очистка отменена</b>\n\nИстория диалога сохранена.",
-            reply_markup=None,
-            parse_mode="HTML"
+            "✅ <b>Очистка отменена</b>\n\nИстория диалога сохранена.", reply_markup=None, parse_mode="HTML"
         )
         logger.info(f"Пользователь {update.effective_user.username} отменил очистку истории")
 
@@ -697,8 +534,6 @@ async def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
 
     # Регистрируем обработчик для callback query (нажатие на inline кнопки)
-    application.add_handler(CallbackQueryHandler(show_detailed_answer_callback, pattern="^show_detailed_"))
-    application.add_handler(CallbackQueryHandler(show_short_answer_callback, pattern="^show_short_"))
     application.add_handler(CallbackQueryHandler(clear_history_callback, pattern="^clear_history_"))
 
     # Регистрируем обработчик для всех текстовых сообщений
@@ -747,8 +582,6 @@ def register_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("help", help_command))
 
     # Регистрируем обработчик для callback query (нажатие на inline кнопки)
-    application.add_handler(CallbackQueryHandler(show_detailed_answer_callback, pattern="^show_detailed_"))
-    application.add_handler(CallbackQueryHandler(show_short_answer_callback, pattern="^show_short_"))
     application.add_handler(CallbackQueryHandler(clear_history_callback, pattern="^clear_history_"))
 
     # Регистрируем обработчик для всех текстовых сообщений

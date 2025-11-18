@@ -25,9 +25,19 @@ async def lifespan(app: FastAPI):
 
     Запускается при старте и остановке приложения
     """
+    from tplexity.generation.api.dependencies import get_generation
+
     logger.info("🚀 [generation] Запуск Generation микросервиса")
     yield
     logger.info("🛑 [generation] Остановка Generation микросервиса")
+
+    # Закрываем соединения при остановке
+    try:
+        generation_service = get_generation()
+        await generation_service.close()
+        logger.info("✅ [generation] Соединения закрыты")
+    except Exception as e:
+        logger.error(f"❌ [generation] Ошибка при закрытии соединений: {e}")
 
 
 # Создание FastAPI приложения

@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FailedPost:
     """Структура для хранения неудачно отправленного поста"""
+
     post_data: dict[str, Any]
     channel: str
     retry_count: int = 0
@@ -58,11 +59,11 @@ class TelegramMonitorService:
         self.is_running = False
         self.session_name = session_name
         self.session_string = session_string
-        
+
         # Очередь для повторных попыток отправки неудачных постов
         self.failed_posts: deque[FailedPost] = deque()
         self.retry_task: asyncio.Task | None = None
-        
+
         # Словарь для отслеживания каналов (username -> entity)
         self.channel_entities: dict[str, Any] = {}
         # Словарь для хранения названий каналов (username -> title)
@@ -87,8 +88,10 @@ class TelegramMonitorService:
         logger.info(f"   API_ID: {self.api_id}")
         logger.info(f"   API_HASH: {'*' * 10 if self.api_hash else 'None (не указан!)'}")
         logger.info(f"   SESSION_NAME: {self.session_name}")
-        logger.info(f"   TELEGRAM_SESSION_STRING: {'указан' if self.session_string else 'не указан (будет использован файл)'}")
-        
+        logger.info(
+            f"   TELEGRAM_SESSION_STRING: {'указан' if self.session_string else 'не указан (будет использован файл)'}"
+        )
+
         if self.session_string:
             logger.info(f"🔑 [monitor_service] Используется строка сессии (длина: {len(self.session_string)} символов)")
             logger.debug(f"🔑 [monitor_service] Первые 20 символов session_string: {self.session_string[:20]}...")
@@ -98,8 +101,12 @@ class TelegramMonitorService:
                 logger.info(f"📁 [monitor_service] Файл сессии существует, размер: {session_path.stat().st_size} байт")
             else:
                 logger.warning(f"⚠️ [monitor_service] Файл сессии не найден: {session_path}")
-                logger.warning(f"💡 [monitor_service] Для использования строки сессии добавьте TELEGRAM_SESSION_STRING в .env")
-                logger.warning(f"💡 [monitor_service] Или запустите: poetry run python src/tplexity/tg_parse/authorize_telegram.py")
+                logger.warning(
+                    "💡 [monitor_service] Для использования строки сессии добавьте TELEGRAM_SESSION_STRING в .env"
+                )
+                logger.warning(
+                    "💡 [monitor_service] Или запустите: poetry run python src/tplexity/tg_parse/authorize_telegram.py"
+                )
         logger.info("=" * 60)
 
         # Детальное логирование перед созданием TelegramDownloader
@@ -134,7 +141,7 @@ class TelegramMonitorService:
         logger.info("🔍 [monitor_service] Проверка авторизации...")
         is_authorized = await self.downloader.client.is_user_authorized()
         logger.info(f"🔍 [monitor_service] Статус авторизации: {is_authorized}")
-        
+
         if not is_authorized:
             error_msg = (
                 "Telegram клиент не авторизован. Требуется авторизация.\n"
@@ -171,7 +178,6 @@ class TelegramMonitorService:
 
         logger.info("✅ [запуске ] Инициализация завершена")
 
-
     async def start_monitoring(self):
         """Запускает мониторинг каналов через WebSocket (события Telethon)."""
         if self.is_running:
@@ -188,18 +194,16 @@ class TelegramMonitorService:
                 continue
 
             entity = self.channel_entities[channel]
-            
+
             # Используем замыкание для правильного захвата channel
             def make_handler(channel_name: str):
                 async def handler(event: events.NewMessage.Event):
                     """Обработчик новых сообщений из канала"""
                     await self._handle_new_message(event, channel_name)
+
                 return handler
-            
-            self.downloader.client.add_event_handler(
-                make_handler(channel),
-                events.NewMessage(chats=entity)
-            )
+
+            self.downloader.client.add_event_handler(make_handler(channel), events.NewMessage(chats=entity))
 
             logger.info(f"✅ [monitor_service] Зарегистрирован обработчик для канала: {channel}")
 
@@ -245,10 +249,7 @@ class TelegramMonitorService:
                     )
 
         except Exception as e:
-            logger.error(
-                f"❌ [monitor_service] Ошибка при обработке нового сообщения из {channel}: {e}",
-                exc_info=True
-            )
+            logger.error(f"❌ [monitor_service] Ошибка при обработке нового сообщения из {channel}: {e}", exc_info=True)
 
     async def _save_message(self, channel: str, message_dict: dict[str, Any]):
         """Сохраняет новое сообщение в файл."""
@@ -277,14 +278,14 @@ class TelegramMonitorService:
     async def _send_post_to_retriever(self, post_dict: dict[str, Any], channel: str) -> bool:
         """
         Отправляет пост полностью (без чанкирования) в Retriever API.
-        
+
         Returns:
             True если отправка успешна, False в противном случае
         """
         try:
             text = (post_dict.get("text") or "").strip()
             if not text:
-                logger.warning(f"⚠️ [monitor_service] Пост без текста пропущен")
+                logger.warning("⚠️ [monitor_service] Пост без текста пропущен")
                 return True  # Не считаем это ошибкой
 
             # Добавляем время поста в конец текста
@@ -295,14 +296,14 @@ class TelegramMonitorService:
                     # Обрабатываем Z как UTC
                     if date_str.endswith("Z"):
                         date_str = date_str.replace("Z", "+00:00")
-                    
+
                     # Парсим ISO формат
                     if "T" in date_str:
                         post_date = datetime.fromisoformat(date_str)
                     else:
                         # Только дата, добавляем время 00:00:00
                         post_date = datetime.fromisoformat(f"{date_str}T00:00:00")
-                    
+
                     # Форматируем в нужный формат (без timezone)
                     formatted_date = post_date.strftime("%Y-%m-%d %H:%M:%S")
                     text = f"{text}\n\n{formatted_date}"
@@ -321,15 +322,10 @@ class TelegramMonitorService:
 
             # Отправляем в Retriever API
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self.webhook_url,
-                    json={"documents": [document]},
-                    timeout=30.0
-                )
+                response = await client.post(self.webhook_url, json={"documents": [document]}, timeout=30.0)
                 response.raise_for_status()
                 logger.info(
-                    f"📤 [monitor_service] Пост {post_dict.get('id')} из {channel} "
-                    f"успешно отправлен в Retriever"
+                    f"📤 [monitor_service] Пост {post_dict.get('id')} из {channel} " f"успешно отправлен в Retriever"
                 )
                 return True
         except Exception as e:
@@ -342,29 +338,26 @@ class TelegramMonitorService:
     async def _retry_failed_posts_loop(self):
         """Фоновая задача для повторных попыток отправки неудачных постов."""
         logger.info("🔄 [monitor_service] Запущена задача для повторных попыток отправки постов")
-        
+
         while self.is_running:
             try:
                 await asyncio.sleep(self.retry_interval)
-                
+
                 if not self.failed_posts:
                     continue
 
                 logger.info(f"🔄 [monitor_service] Попытка повторной отправки {len(self.failed_posts)} постов")
-                
+
                 # Обрабатываем все посты в очереди
                 posts_to_retry = list(self.failed_posts)
                 self.failed_posts.clear()
-                
+
                 for failed_post in posts_to_retry:
                     if not self.is_running:
                         break
-                    
-                    success = await self._send_post_to_retriever(
-                        failed_post.post_data,
-                        failed_post.channel
-                    )
-                    
+
+                    success = await self._send_post_to_retriever(failed_post.post_data, failed_post.channel)
+
                     if not success:
                         # Увеличиваем счетчик попыток и возвращаем в очередь
                         failed_post.retry_count += 1
@@ -384,10 +377,7 @@ class TelegramMonitorService:
                 logger.info("🛑 [monitor_service] Задача повторных попыток остановлена")
                 break
             except Exception as e:
-                logger.error(
-                    f"❌ [monitor_service] Ошибка в задаче повторных попыток: {e}",
-                    exc_info=True
-                )
+                logger.error(f"❌ [monitor_service] Ошибка в задаче повторных попыток: {e}", exc_info=True)
 
     async def download_initial_messages(self) -> dict[str, Any]:
         """
@@ -397,9 +387,7 @@ class TelegramMonitorService:
         Returns:
             Статистика по скачанным сообщениям
         """
-        logger.info(
-            f"📥 [monitor_service] Скачивание всех доступных сообщений из каждого канала..."
-        )
+        logger.info("📥 [monitor_service] Скачивание всех доступных сообщений из каждого канала...")
 
         results: dict[str, Any] = {"total_downloaded": 0, "total_saved": 0, "channels": {}}
 
@@ -408,15 +396,14 @@ class TelegramMonitorService:
                 logger.info(f"📥 [monitor_service] Скачивание из канала: {channel}")
 
                 # Скачиваем все сообщения (без ограничений)
-                messages = await self.downloader.download_messages(
-                    channel_username=channel, limit=None
-                )
+                messages = await self.downloader.download_messages(channel_username=channel, limit=None)
 
                 downloaded_count = len(messages)
 
                 # Фильтруем пустые сообщения (безопасная проверка на None)
                 messages_with_text = [
-                    msg for msg in messages 
+                    msg
+                    for msg in messages
                     if msg.get("text") and isinstance(msg.get("text"), str) and msg.get("text").strip()
                 ]
                 saved_count = len(messages_with_text)
@@ -480,4 +467,6 @@ class TelegramMonitorService:
             except Exception as e:
                 logger.error(f"❌ [monitor_service] Ошибка при отключении клиента: {e}")
 
-        logger.info(f"✅ [monitor_service] Мониторинг остановлен. В очереди повторных попыток: {len(self.failed_posts)} постов")
+        logger.info(
+            f"✅ [monitor_service] Мониторинг остановлен. В очереди повторных попыток: {len(self.failed_posts)} постов"
+        )

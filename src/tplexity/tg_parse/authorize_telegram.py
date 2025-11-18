@@ -93,6 +93,7 @@ async def main():
         print(f"❌ Ошибка авторизации: {e}")
         print("=" * 60)
         import traceback
+
         traceback.print_exc()
     finally:
         await client.disconnect()

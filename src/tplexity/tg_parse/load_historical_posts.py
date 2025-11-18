@@ -13,7 +13,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -22,10 +22,7 @@ from tplexity.tg_parse.config import settings
 from tplexity.tg_parse.telegram_downloader import TelegramDownloader
 
 # Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -59,7 +56,7 @@ async def send_posts_to_retriever(
     channel: str,
     retriever_url: str,
     batch_size: int = 50,
-    channel_titles: dict[str, str] | None = None
+    channel_titles: dict[str, str] | None = None,
 ) -> tuple[int, int]:
     """
     Отправляет посты в retriever (без чанкирования, полностью).
@@ -82,7 +79,7 @@ async def send_posts_to_retriever(
 
     # Отправляем посты батчами
     for i in range(0, len(posts), batch_size):
-        batch = posts[i:i + batch_size]
+        batch = posts[i : i + batch_size]
         documents = []
 
         for post in batch:
@@ -98,14 +95,14 @@ async def send_posts_to_retriever(
                     # Обрабатываем Z как UTC
                     if date_str.endswith("Z"):
                         date_str = date_str.replace("Z", "+00:00")
-                    
+
                     # Парсим ISO формат
                     if "T" in date_str:
                         post_date = datetime.fromisoformat(date_str)
                     else:
                         # Только дата, добавляем время 00:00:00
                         post_date = datetime.fromisoformat(f"{date_str}T00:00:00")
-                    
+
                     # Форматируем в нужный формат (без timezone)
                     formatted_date = post_date.strftime("%Y-%m-%d %H:%M:%S")
                     text = f"{text}\n\n{formatted_date}"
@@ -129,11 +126,7 @@ async def send_posts_to_retriever(
 
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    documents_url,
-                    json={"documents": documents},
-                    timeout=60.0
-                )
+                response = await client.post(documents_url, json={"documents": documents}, timeout=60.0)
                 response.raise_for_status()
                 success_count += len(documents)
                 logger.info(
@@ -142,9 +135,7 @@ async def send_posts_to_retriever(
                 )
         except Exception as e:
             error_count += len(documents)
-            logger.error(
-                f"❌ [load_historical] Ошибка при отправке батча из {channel}: {e}"
-            )
+            logger.error(f"❌ [load_historical] Ошибка при отправке батча из {channel}: {e}")
 
     return success_count, error_count
 
@@ -173,7 +164,7 @@ async def load_historical_posts():
 
     # Вычисляем дату 4 месяца назад (примерно 120 дней)
     # Используем UTC для корректного сравнения с датами из Telegram
-    four_months_ago = datetime.now(timezone.utc) - timedelta(days=120)
+    four_months_ago = datetime.now(UTC) - timedelta(days=120)
     logger.info(f"📅 [load_historical] Загружаем посты с {four_months_ago.strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
     # Очищаем БД
@@ -191,8 +182,10 @@ async def load_historical_posts():
     logger.info(f"   API_ID: {settings.api_id}")
     logger.info(f"   API_HASH: {'*' * 10 if settings.api_hash else 'None (не указан!)'}")
     logger.info(f"   SESSION_NAME: {settings.session_name}")
-    logger.info(f"   TELEGRAM_SESSION_STRING: {'указан' if settings.session_string else 'не указан (будет использован файл)'}")
-    
+    logger.info(
+        f"   TELEGRAM_SESSION_STRING: {'указан' if settings.session_string else 'не указан (будет использован файл)'}"
+    )
+
     if settings.session_string:
         logger.info(f"🔑 [load_historical] Используется строка сессии (длина: {len(settings.session_string)} символов)")
         logger.debug(f"🔑 [load_historical] Первые 20 символов session_string: {settings.session_string[:20]}...")
@@ -202,8 +195,12 @@ async def load_historical_posts():
             logger.info(f"📁 [load_historical] Файл сессии существует, размер: {session_path.stat().st_size} байт")
         else:
             logger.warning(f"⚠️ [load_historical] Файл сессии не найден: {session_path}")
-            logger.warning(f"💡 [load_historical] Для использования строки сессии добавьте TELEGRAM_SESSION_STRING в .env")
-            logger.warning(f"💡 [load_historical] Или запустите: poetry run python src/tplexity/tg_parse/authorize_telegram.py")
+            logger.warning(
+                "💡 [load_historical] Для использования строки сессии добавьте TELEGRAM_SESSION_STRING в .env"
+            )
+            logger.warning(
+                "💡 [load_historical] Или запустите: poetry run python src/tplexity/tg_parse/authorize_telegram.py"
+            )
     logger.info("=" * 60)
 
     # Детальное логирование перед созданием TelegramDownloader
@@ -239,7 +236,7 @@ async def load_historical_posts():
         logger.info("🔍 [load_historical] Проверка авторизации...")
         is_authorized = await downloader.client.is_user_authorized()
         logger.info(f"🔍 [load_historical] Статус авторизации: {is_authorized}")
-        
+
         if not is_authorized:
             error_msg = (
                 "Telegram клиент не авторизован. Требуется авторизация.\n"
@@ -280,33 +277,32 @@ async def load_historical_posts():
                 # Идем от новых к старым и останавливаемся, когда достигнем даты 4 месяца назад
                 logger.info(f"📥 [load_historical] Скачивание постов из {channel}...")
                 all_messages = []
-                
+
                 async for message in downloader.client.iter_messages(
                     channel,
                     limit=None,
                     offset_date=None,  # Начинаем с самых новых
                     reverse=False,  # От новых к старым
                 ):
-                    if not hasattr(message, 'date') or not message.date:
+                    if not hasattr(message, "date") or not message.date:
                         continue
-                    
+
                     # Если сообщение старше 4 месяцев, прекращаем скачивание
                     if message.date < four_months_ago:
                         break
-                    
+
                     # Преобразуем в словарь
                     message_dict = await downloader._message_to_dict(message, channel)
                     all_messages.append(message_dict)
-                    
+
                     # Логируем прогресс каждые 100 сообщений
                     if len(all_messages) % 100 == 0:
-                        logger.info(
-                            f"  📥 [load_historical] Скачано {len(all_messages)} сообщений из {channel}..."
-                        )
+                        logger.info(f"  📥 [load_historical] Скачано {len(all_messages)} сообщений из {channel}...")
 
                 # Фильтруем сообщения с текстом (безопасная проверка на None)
                 messages_with_text = [
-                    msg for msg in all_messages
+                    msg
+                    for msg in all_messages
                     if msg.get("text") and isinstance(msg.get("text"), str) and msg.get("text").strip()
                 ]
 
@@ -320,26 +316,19 @@ async def load_historical_posts():
                 # Отправляем посты в retriever
                 if messages_with_text:
                     success, errors = await send_posts_to_retriever(
-                        messages_with_text,
-                        channel,
-                        retriever_url,
-                        channel_titles=channel_titles
+                        messages_with_text, channel, retriever_url, channel_titles=channel_titles
                     )
                     total_posts_sent += success
                     total_errors += errors
 
                     logger.info(
-                        f"✅ [load_historical] Канал {channel}: "
-                        f"отправлено {success} постов, ошибок: {errors}"
+                        f"✅ [load_historical] Канал {channel}: " f"отправлено {success} постов, ошибок: {errors}"
                     )
                 else:
                     logger.warning(f"⚠️ [load_historical] Канал {channel}: нет постов с текстом")
 
             except Exception as e:
-                logger.error(
-                    f"❌ [load_historical] Ошибка при обработке канала {channel}: {e}",
-                    exc_info=True
-                )
+                logger.error(f"❌ [load_historical] Ошибка при обработке канала {channel}: {e}", exc_info=True)
                 total_errors += 1
 
         # Итоговая статистика
@@ -372,4 +361,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

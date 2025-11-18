@@ -173,6 +173,7 @@ class VectorSearch:
 
     async def _ensure_collection(self) -> None:
         """Создать коллекцию с поддержкой dense и sparse векторов, если не существует"""
+
         async def _get_collections_operation():
             return await self.client.get_collections()
 
@@ -584,6 +585,7 @@ class VectorSearch:
         Returns:
             list[tuple[str, str, dict | None]]: Список кортежей (doc_id, text, metadata)
         """
+
         async def _scroll_operation():
             return await self.client.scroll(
                 collection_name=self.collection_name,
@@ -629,7 +631,7 @@ class VectorSearch:
             return
 
         logger.info(f"🔄 [retriever][vector_search] Удаление {len(ids)} документов из коллекции {self.collection_name}")
-        
+
         async def _delete_operation():
             return await self.client.delete(
                 collection_name=self.collection_name,
@@ -659,7 +661,7 @@ class VectorSearch:
     async def delete_all_documents(self) -> None:
         """Удалить все документы из коллекции"""
         logger.warning("⚠️ [retriever][vector_search] Удаление всех документов из коллекции")
-        
+
         async def _delete_collection_operation():
             return await self.client.delete_collection(collection_name=self.collection_name)
 

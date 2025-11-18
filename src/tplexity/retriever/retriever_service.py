@@ -80,8 +80,7 @@ class RetrieverService:
                 logger.info("✅ [retriever_service] Reranker инициализирован")
             except Exception as e:
                 logger.warning(
-                    f"⚠️ [retriever_service] Не удалось инициализировать reranker: {e}. "
-                    f"Reranker будет отключен."
+                    f"⚠️ [retriever_service] Не удалось инициализировать reranker: {e}. " f"Reranker будет отключен."
                 )
                 self.enable_reranker = False
                 self.reranker = None
@@ -210,7 +209,9 @@ class RetrieverService:
             reformulated_query = await self.llm_client.generate(messages, temperature=0.0, max_tokens=200)
             reformulated_query = reformulated_query.strip()
 
-            logger.debug(f"✅ [retriever_service] Запрос переформулирован: '{query[:50]}...' -> '{reformulated_query[:50]}...'")
+            logger.debug(
+                f"✅ [retriever_service] Запрос переформулирован: '{query[:50]}...' -> '{reformulated_query[:50]}...'"
+            )
             return reformulated_query
         except Exception as e:
             logger.warning(
@@ -271,7 +272,9 @@ class RetrieverService:
         hybrid_start_time = time.time()
         hybrid_results = await self.vector_search.search(search_query, top_k=top_k, search_type="hybrid")
         hybrid_time = time.time() - hybrid_start_time
-        logger.info(f"✅ [retriever_service] Гибридный поиск завершен: найдено {len(hybrid_results)} результатов за {hybrid_time:.2f}с")
+        logger.info(
+            f"✅ [retriever_service] Гибридный поиск завершен: найдено {len(hybrid_results)} результатов за {hybrid_time:.2f}с"
+        )
 
         if not hybrid_results:
             logger.warning("⚠️ [retriever_service] Гибридный поиск не вернул результатов")
@@ -300,7 +303,9 @@ class RetrieverService:
             # Reranking - возвращаем top_n результатов (асинхронно)
             rerank_results = await asyncio.to_thread(self.reranker.rerank, query, rerank_documents, top_n=top_n)
             rerank_time = time.time() - rerank_start_time
-            logger.info(f"✅ [retriever_service] Reranking завершен: {len(rerank_results)}/{top_n} результатов за {rerank_time:.2f}с (из {rerank_limit} документов)")
+            logger.info(
+                f"✅ [retriever_service] Reranking завершен: {len(rerank_results)}/{top_n} результатов за {rerank_time:.2f}с (из {rerank_limit} документов)"
+            )
 
             # Маппинг обратно к оригинальным doc_id с метаданными
             final_results = []
