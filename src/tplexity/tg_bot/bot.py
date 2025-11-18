@@ -400,14 +400,6 @@ T-Plexity — интеллектуальная система, которая в
             user_message, llm_provider=selected_model, session_id=session_id
         )
 
-        # Форматируем детали генерации в стиле T-Bank
-        timing_info_parts = []
-        if search_time is not None:
-            timing_info_parts.append(f"🔍 <b>Поиск информации:</b> {search_time:.2f} с")
-        timing_info_parts.append(f"⚡ <b>Генерация ответа:</b> {generation_time:.2f} с")
-        timing_info_parts.append(f"⏱️ <b>Общее время:</b> {total_time:.2f} с")
-        timing_info = "\n".join(timing_info_parts)
-
         # Логируем полученные источники для отладки
         logger.info(f"📋 [tg_bot][bot] Получено источников: {len(sources)}")
         if sources:
@@ -429,11 +421,11 @@ T-Plexity — интеллектуальная система, которая в
             f"📋 [tg_bot][bot] Отформатированный текст источников: {sources_text[:100] if sources_text else 'пусто'}..."
         )
 
-        # Формируем полный ответ с источниками и временем генерации
+        # Формируем полный ответ с источниками
         if sources_text:
-            response_text = f"{answer_with_citations}\n\n{sources_text}\n\n{timing_info}"
+            response_text = f"{answer_with_citations}\n\n{sources_text}"
         else:
-            response_text = f"{answer_with_citations}\n\n{timing_info}"
+            response_text = answer_with_citations
 
         # Отправляем полный ответ
         await update.message.reply_text(response_text, disable_web_page_preview=True, parse_mode="HTML")

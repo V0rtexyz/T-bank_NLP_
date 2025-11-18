@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from datetime import datetime
@@ -7,7 +8,9 @@ import httpx
 from tplexity.generation.config import settings
 from tplexity.generation.memory_service import MemoryService
 from tplexity.generation.prompts import (
+    QUERY_REFORMULATION_PROMPT,
     REACT_DECISION_PROMPT,
+    RELEVANCE_EVALUATOR_PROMPT,
     SYSTEM_PROMPT_WITH_RETRIEVER,
     SYSTEM_PROMPT_WITHOUT_RETRIEVER,
     USER_PROMPT,
@@ -224,6 +227,138 @@ class GenerationService:
             )
             return True
 
+    async def _reformulate_query(
+        self, query: str, session_id: str | None = None, llm_provider: str | None = None
+    ) -> str:
+        """
+        Агент перефразировки: переписывает исходный запрос в форму, удобную для поиска
+
+        Args:
+            query (str): Исходный запрос пользователя
+            session_id (str | None): Идентификатор сессии для получения истории диалога
+            llm_provider (str | None): Провайдер LLM для переформулирования
+
+        Returns:
+            str: Переформулированный запрос
+        """
+        # Получаем историю диалога для контекста
+        history_text = ""
+        if session_id:
+            history = await self.memory_service.get_history(session_id)
+            if history:
+                history_messages = []
+                for message in history:
+                    role = message.get("role", "unknown")
+                    content = message.get("content", "")
+                    if role == "user":
+                        history_messages.append(f"Пользователь: {content}")
+                    elif role == "assistant":
+                        history_messages.append(f"Ассистент: {content}")
+                if history_messages:
+                    history_text = "\n".join(history_messages[-6:])  # Последние 6 сообщений
+
+        reformulation_prompt = QUERY_REFORMULATION_PROMPT.format(history=history_text, query=query)
+
+        provider = llm_provider or self.llm_provider
+        llm_client = get_llm(provider)
+
+        messages = [{"role": "user", "content": reformulation_prompt}]
+
+        try:
+            reformulated_query = await llm_client.generate(messages, temperature=0.0, max_tokens=200)
+            reformulated_query = reformulated_query.strip()
+            logger.info(
+                f"✅ [generation][generation_service] Запрос переформулирован: '{query[:50]}...' -> '{reformulated_query[:50]}...'"
+            )
+            return reformulated_query
+        except Exception as e:
+            logger.warning(
+                f"⚠️ [generation][generation_service] Ошибка при переформулировании запроса: {e}. Используется оригинальный запрос."
+            )
+            return query
+
+    async def _evaluate_document_relevance(
+        self, reformulated_query: str, document_text: str, llm_provider: str | None = None
+    ) -> bool:
+        """
+        Агент-оценщик релевантности: бинарно решает, релевантен ли документ переформулированному запросу
+
+        Args:
+            reformulated_query (str): Переформулированный запрос
+            document_text (str): Текст документа для оценки
+            llm_provider (str | None): Не используется, агент-оценщик всегда использует Qwen
+
+        Returns:
+            bool: True если документ релевантен, False если нет
+        """
+        evaluator_prompt = RELEVANCE_EVALUATOR_PROMPT.format(
+            reformulated_query=reformulated_query, document_text=document_text
+        )
+
+        # Агент-оценщик всегда использует Qwen
+        llm_client = get_llm("qwen")
+
+        messages = [{"role": "user", "content": evaluator_prompt}]
+
+        try:
+            decision = await llm_client.generate(messages, temperature=0.0, max_tokens=10)
+            decision = decision.strip().upper()
+            is_relevant = decision.startswith("YES")
+            return is_relevant
+        except Exception as e:
+            logger.warning(
+                f"⚠️ [generation][generation_service] Ошибка при оценке релевантности документа: {e}. Документ считается релевантным по умолчанию."
+            )
+            return True  # В случае ошибки считаем документ релевантным
+
+    async def _evaluate_documents_relevance_parallel(
+        self,
+        reformulated_query: str,
+        documents: list[tuple[str, float, str, dict | None]],
+        llm_provider: str | None = None,
+    ) -> list[tuple[str, float, str, dict | None]]:
+        """
+        Параллельная оценка релевантности всех документов через агента-оценщика
+
+        Args:
+            reformulated_query (str): Переформулированный запрос
+            documents: Список кортежей (doc_id, score, text, metadata)
+            llm_provider (str | None): Не используется, агент-оценщик всегда использует Qwen
+
+        Returns:
+            list[tuple[str, float, str, dict | None]]: Список только релевантных документов
+        """
+        if not documents:
+            return []
+
+        # Создаем задачи для параллельной оценки всех документов
+        # Агент-оценщик всегда использует Qwen, поэтому передаем None
+        tasks = [
+            self._evaluate_document_relevance(reformulated_query, text, None)
+            for _, _, text, _ in documents
+        ]
+
+        # Запускаем все оценки параллельно
+        relevance_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Фильтруем документы по результатам оценки
+        relevant_documents = []
+        for idx, (doc_id, score, text, metadata) in enumerate(documents):
+            if isinstance(relevance_results[idx], Exception):
+                logger.warning(
+                    f"⚠️ [generation][generation_service] Ошибка при оценке документа {doc_id}: {relevance_results[idx]}. Документ считается релевантным."
+                )
+                relevant_documents.append((doc_id, score, text, metadata))
+            elif relevance_results[idx]:  # True означает релевантность
+                relevant_documents.append((doc_id, score, text, metadata))
+            else:
+                logger.debug(f"🔍 [generation][generation_service] Документ {doc_id} признан нерелевантным")
+
+        logger.info(
+            f"✅ [generation][generation_service] Оценка релевантности завершена: {len(relevant_documents)}/{len(documents)} документов релевантны"
+        )
+        return relevant_documents
+
     def _validate_documents(
         self, documents: list[tuple[str, float, str, dict | None]], min_score: float = 0.0, min_text_length: int = 10
     ) -> list[tuple[str, float, str, dict | None]]:
@@ -358,28 +493,54 @@ class GenerationService:
         context_documents = []
         search_time = None
         if use_retriever:
-            # Получаем историю диалога для передачи в retriever (если указан session_id)
-            messages = None
-            if session_id:
-                history = await self.memory_service.get_history(session_id)
-                if history:
-                    messages = [message for message in history if message.get("role") != "system"]
+            # Шаг 1: Агент перефразировки - переписывает запрос для поиска
+            reformulation_start_time = time.time()
+            reformulated_query = await self._reformulate_query(query, session_id, llm_provider)
+            reformulation_time = time.time() - reformulation_start_time
+            logger.info(
+                f"✅ [generation][generation_service] Агент перефразировки: запрос переформулирован за {reformulation_time:.2f}с"
+            )
 
-            # Шаг 1: Поиск релевантных документов через Retriever API
+            # Шаг 2: Поиск документов через Retriever API
+            # Передаем уже переформулированный запрос и messages=None, чтобы retriever не выполнял свою переформулировку
             search_start_time = time.time()
             raw_documents = await self.retriever_client.search(
-                query=query, top_k=top_k, top_n=None, use_rerank=use_rerank, messages=messages
+                query=reformulated_query, top_k=top_k, top_n=None, use_rerank=use_rerank, messages=None
             )
-            search_time = time.time() - search_start_time
+            retrieval_time = time.time() - search_start_time
             logger.info(
-                f"✅ [generation][generation_service] Поиск завершен: {len(raw_documents)} документов за {search_time:.2f}с"
+                f"✅ [generation][generation_service] Retriever: найдено {len(raw_documents)} документов за {retrieval_time:.2f}с"
             )
 
-            # Валидация и фильтрация документов
-            context_documents = self._validate_documents(raw_documents, min_score=0.0, min_text_length=10)
+            # Валидация документов по базовым критериям (длина, наличие текста)
+            validated_documents = self._validate_documents(raw_documents, min_score=0.0, min_text_length=10)
+
+            if not validated_documents:
+                logger.warning("⚠️ [generation][generation_service] Документы не прошли базовую валидацию")
+                error_message = "К сожалению, я не нашел релевантной информации в базе знаний для ответа на ваш вопрос."
+                total_time = time.time() - total_start_time
+                return (
+                    error_message,
+                    [],
+                    [],
+                    time.time() - search_start_time,
+                    0.0,
+                    total_time,
+                )
+
+            # Шаг 3: Агент-оценщик релевантности - параллельная проверка всех документов
+            evaluation_start_time = time.time()
+            context_documents = await self._evaluate_documents_relevance_parallel(
+                reformulated_query, validated_documents, llm_provider
+            )
+            evaluation_time = time.time() - evaluation_start_time
+            search_time = time.time() - search_start_time  # Общее время поиска + оценки
+            logger.info(
+                f"✅ [generation][generation_service] Агент-оценщик релевантности: {len(context_documents)}/{len(validated_documents)} документов релевантны за {evaluation_time:.2f}с"
+            )
 
             if not context_documents:
-                logger.warning("⚠️ [generation][generation_service] Релевантные документы не найдены или не прошли валидацию")
+                logger.warning("⚠️ [generation][generation_service] Нет релевантных документов после оценки")
                 error_message = "К сожалению, я не нашел релевантной информации в базе знаний для ответа на ваш вопрос."
                 total_time = time.time() - total_start_time
                 return (
@@ -391,7 +552,7 @@ class GenerationService:
                     total_time,
                 )
 
-        # Шаг 2: Формирование промпта
+        # Шаг 4: Формирование промпта для генерации ответа
         if context_documents:
             prompt = self._build_prompt(query, context_documents)
         else:
