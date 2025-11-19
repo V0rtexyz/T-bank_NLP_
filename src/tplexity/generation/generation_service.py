@@ -174,11 +174,28 @@ class GenerationService:
         # Выбираем провайдер LLM
         self.llm_provider = llm_provider or settings.llm_provider
         self.llm_client = get_llm(self.llm_provider)
+        self.router_llm_provider = settings.router_llm_provider
+        self.router_llm_client = get_llm(self.router_llm_provider)
 
         # Инициализируем сервис памяти
         self.memory_service = memory_service or MemoryService()
 
         logger.info(f"✅ [generation][generation_service] Сервис генерации инициализирован: provider={self.llm_provider}")
+
+    def _get_agent_llm_client(self, override_provider: str | None = None):
+        """
+        Возвращает LLM клиента для вспомогательных агентов (роутер, переформулировщик)
+        и гарантирует, что deepseek используется только для финальной генерации ответа.
+        """
+
+        provider = override_provider or self.router_llm_provider
+        if provider == self.llm_provider:
+            provider = self.router_llm_provider
+
+        if provider == self.router_llm_provider and override_provider is None:
+            return self.router_llm_client
+
+        return get_llm(provider)
 
     async def _should_use_retriever(
         self, query: str, session_id: str | None = None, llm_provider: str | None = None
@@ -211,8 +228,7 @@ class GenerationService:
 
         decision_prompt = REACT_DECISION_PROMPT.format(history=history_text, query=query)
 
-        provider = llm_provider or self.llm_provider
-        llm_client = get_llm(provider)
+        llm_client = self._get_agent_llm_client(llm_provider)
 
         messages = [{"role": "user", "content": decision_prompt}]
 
@@ -260,8 +276,7 @@ class GenerationService:
 
         reformulation_prompt = QUERY_REFORMULATION_PROMPT.format(history=history_text, query=query)
 
-        provider = llm_provider or self.llm_provider
-        llm_client = get_llm(provider)
+        llm_client = self._get_agent_llm_client(llm_provider)
 
         messages = [{"role": "user", "content": reformulation_prompt}]
 

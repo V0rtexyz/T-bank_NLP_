@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     # LLM настройки
     llm_provider: str = "deepseek"
+    router_llm_provider: str = "qwen"
 
     # Retriever API настройки
     retriever_api_url: str = "http://localhost:8010"
