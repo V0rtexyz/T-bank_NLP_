@@ -31,6 +31,7 @@ dependencies = [
     "python-multipart (>=0.0.6)",
     "hf-xet (>=1.2.0,<2.0.0)",
     "redis[hiredis] (>=5.0.0,<6.0.0)",
+    "aiofiles (>=24.1.0,<25.0.0)",
 ]
 
 [tool.poetry]

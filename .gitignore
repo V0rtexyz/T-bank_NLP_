@@ -221,6 +221,8 @@ __marimo__/
 
 ./data
 data/
+./experiments
+experiments/
 poetry.lock
 pyproject.toml
 *.session

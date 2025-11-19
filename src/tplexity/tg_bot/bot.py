@@ -430,8 +430,8 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error("Generation client not found in bot_data")
         return
 
-    # Используем qwen как модель по умолчанию
-    selected_model = "qwen"
+    # Используем deepseek как модель по умолчанию
+    selected_model = "deepseek"
     logger.info(f"📌 [tg_bot][bot] Использование модели: {selected_model}")
 
     # Показываем индикатор печати
@@ -556,8 +556,8 @@ async def short_answer_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
         try:
-            # Используем qwen как модель по умолчанию
-            selected_model = "qwen"
+            # Используем deepseek как модель по умолчанию
+            selected_model = "deepseek"
 
             # Генерируем краткий ответ
             detailed_answer = saved_data["detailed_answer"]

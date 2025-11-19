@@ -11,12 +11,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import aiofiles
 import httpx
 from telethon import events
 from telethon.tl.types import Message
 
+from tplexity.tg_parse.llm_batcher import get_batcher
 from tplexity.tg_parse.post_deletion_service import PostDeletionService
-from tplexity.tg_parse.relevance_analyzer import calculate_delete_date, determine_relevance_days
+from tplexity.tg_parse.relevance_analyzer import calculate_delete_date
 from tplexity.tg_parse.telegram_downloader import TelegramDownloader
 
 logger = logging.getLogger(__name__)
@@ -86,6 +88,12 @@ class TelegramMonitorService:
         
         # Сервис удаления постов (инициализируется при необходимости)
         self.deletion_service: PostDeletionService | None = None
+
+        # HTTP клиент с connection pooling (инициализируется при необходимости)
+        self.http_client: httpx.AsyncClient | None = None
+
+        # LLM батчер для оптимизации запросов
+        self.llm_batcher = get_batcher(llm_provider)
 
     async def initialize(self):
         """Инициализация: загрузка существующих данных."""
@@ -194,6 +202,16 @@ class TelegramMonitorService:
         logger.info(f"📊 [tg_parse][monitor_service] Всего каналов: {len(self.channels)}")
         logger.info("=" * 60)
 
+        # Инициализируем HTTP клиент с connection pooling
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+            timeout=httpx.Timeout(30.0, connect=10.0),
+        )
+        logger.info("✅ [tg_parse][monitor_service] HTTP клиент с connection pooling инициализирован")
+
+        # Запускаем LLM батчер
+        await self.llm_batcher.start()
+
         logger.info("✅ [tg_parse][monitor_service] Инициализация завершена")
 
     async def start_monitoring(self):
@@ -299,26 +317,27 @@ class TelegramMonitorService:
             logger.error(f"❌ [tg_parse][monitor_service] Ошибка при обработке нового сообщения из {channel}: {e}", exc_info=True)
 
     async def _save_message(self, channel: str, message_dict: dict[str, Any]):
-        """Сохраняет новое сообщение в файл."""
+        """Сохраняет новое сообщение в файл (асинхронный I/O)."""
         channel_dir = self.telegram_dir / channel
         channel_dir.mkdir(parents=True, exist_ok=True)
 
         messages_file = channel_dir / "messages_monitor.json"
 
-        # Загружаем существующие сообщения
+        # Загружаем существующие сообщения (асинхронно)
         existing_messages = []
         if messages_file.exists():
-            with open(messages_file, encoding="utf-8") as f:
-                existing_messages = json.load(f)
+            async with aiofiles.open(messages_file, mode="r", encoding="utf-8") as f:
+                content = await f.read()
+                existing_messages = json.loads(content)
 
         # Добавляем новое сообщение (если его еще нет)
         message_id = message_dict.get("id")
         if not any(msg.get("id") == message_id for msg in existing_messages):
             existing_messages.append(message_dict)
 
-            # Сохраняем
-            with open(messages_file, "w", encoding="utf-8") as f:
-                json.dump(existing_messages, f, ensure_ascii=False, indent=2)
+            # Сохраняем (асинхронно)
+            async with aiofiles.open(messages_file, mode="w", encoding="utf-8") as f:
+                await f.write(json.dumps(existing_messages, ensure_ascii=False, indent=2))
 
             logger.debug(f"💾 [tg_parse][monitor_service] Сообщение сохранено в {messages_file}")
 
@@ -364,14 +383,32 @@ class TelegramMonitorService:
             channel_title = self.channel_titles.get(channel, channel)
             metadata["channel_title"] = channel_title
 
-            # Определяем актуальность поста через LLM и добавляем дату удаления
+            # Определяем актуальность поста через LLM с батчингом и добавляем дату удаления
             try:
-                relevance_days, llm_response = await determine_relevance_days(text, self.llm_provider)
-                delete_date = calculate_delete_date(relevance_days)
+                relevance_days, llm_response = await self.llm_batcher.determine_relevance_days(
+                    text, self.llm_provider
+                )
+                
+                # Парсим дату публикации поста для расчета даты удаления
+                post_publication_date = None
+                date_str = post_dict.get("date")
+                if date_str:
+                    try:
+                        if date_str.endswith("Z"):
+                            date_str = date_str.replace("Z", "+00:00")
+                        if "T" in date_str:
+                            post_publication_date = datetime.fromisoformat(date_str)
+                        else:
+                            post_publication_date = datetime.fromisoformat(f"{date_str}T00:00:00")
+                    except (ValueError, AttributeError) as e:
+                        logger.debug(f"⚠️ [monitor_service] Не удалось распарсить дату публикации: {date_str}, ошибка: {e}")
+                
+                # Вычисляем дату удаления от даты публикации
+                delete_date = calculate_delete_date(relevance_days, post_publication_date)
                 metadata["delete_date"] = delete_date
                 logger.info(
                     f"📅 [monitor_service] Для поста {post_dict.get('id')} из {channel} определена дата удаления: {delete_date} "
-                    f"(актуальность: {relevance_days} дней, ответ LLM: {llm_response})"
+                    f"(актуальность: {relevance_days} дней от даты публикации, ответ LLM: {llm_response})"
                 )
             except Exception as e:
                 logger.error(
@@ -383,14 +420,25 @@ class TelegramMonitorService:
             # Формируем документ для Retriever API
             document = {"text": text, "metadata": metadata}
 
-            # Отправляем в Retriever API
-            async with httpx.AsyncClient() as client:
-                response = await client.post(self.webhook_url, json={"documents": [document]}, timeout=30.0)
+            # Отправляем в Retriever API используя переиспользуемый клиент с connection pooling
+            if not self.http_client:
+                logger.error("❌ [tg_parse][monitor_service] HTTP клиент не инициализирован")
+                return False
+
+            try:
+                response = await self.http_client.post(
+                    self.webhook_url, json={"documents": [document]}, timeout=30.0
+                )
                 response.raise_for_status()
                 logger.info(
                     f"📤 [tg_parse][monitor_service] Пост {post_dict.get('id')} из {channel} " f"успешно отправлен в Retriever"
                 )
                 return True
+            except httpx.HTTPError as e:
+                logger.error(
+                    f"❌ [tg_parse][monitor_service] HTTP ошибка при отправке поста {post_dict.get('id')}: {e}"
+                )
+                return False
         except Exception as e:
             logger.error(
                 f"❌ [tg_parse][monitor_service] Ошибка при отправке поста {post_dict.get('id')} "
@@ -475,14 +523,14 @@ class TelegramMonitorService:
                     f"📊 [tg_parse][monitor_service] Канал {channel}: скачано {downloaded_count}, с текстом {saved_count}"
                 )
 
-                # Сохраняем в JSON
+                # Сохраняем в JSON (асинхронно)
                 if messages_with_text:
                     channel_dir = self.telegram_dir / channel
                     channel_dir.mkdir(parents=True, exist_ok=True)
 
                     messages_file = channel_dir / "messages_monitor.json"
-                    with open(messages_file, "w", encoding="utf-8") as f:
-                        json.dump(messages_with_text, f, ensure_ascii=False, indent=2)
+                    async with aiofiles.open(messages_file, mode="w", encoding="utf-8") as f:
+                        await f.write(json.dumps(messages_with_text, ensure_ascii=False, indent=2))
 
                     logger.info(f"💾 [tg_parse][monitor_service] Сохранено в {messages_file}")
 
@@ -537,6 +585,14 @@ class TelegramMonitorService:
                 await self.deletion_task
             except asyncio.CancelledError:
                 pass
+
+        # Останавливаем LLM батчер
+        await self.llm_batcher.stop()
+
+        # Закрываем HTTP клиент
+        if self.http_client:
+            await self.http_client.aclose()
+            logger.info("✅ [tg_parse][monitor_service] HTTP клиент закрыт")
 
         logger.info(f"✅ [monitor_service] Мониторинг остановлен. В очереди повторных попыток: {len(self.failed_posts)} постов")
 

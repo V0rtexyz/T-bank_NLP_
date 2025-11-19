@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """Настройки generation микросервиса из .env файла"""
 
     # LLM настройки
-    llm_provider: str = "qwen"
+    llm_provider: str = "deepseek"
 
     # Retriever API настройки
     retriever_api_url: str = "http://localhost:8010"

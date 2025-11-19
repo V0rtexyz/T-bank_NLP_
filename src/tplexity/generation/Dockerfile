@@ -27,7 +27,7 @@ COPY src/ /app/src/
 ENV PYTHONPATH=/app/src
 
 ENV RETRIEVER_API_URL=http://retriever:8010
-ENV LLM_PROVIDER=qwen
+ENV LLM_PROVIDER=deepseek
 # Переменные окружения передаются через env_file в docker-compose.yml
 # из файлов src/tplexity/generation/.env и src/tplexity/llm_client/.env
 
